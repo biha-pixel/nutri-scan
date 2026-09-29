@@ -9,10 +9,11 @@ Guide development of the Expo / React Native mobile application for the food rec
 
 ## Technology Stack
 
-- **Expo** (managed workflow unless ejection is required)
+- **Expo** (managed workflow)
 - **React Native** for cross-platform mobile UI
-- **TypeScript** — strict mode, no `any` types without justification
+- **TypeScript** — strict mode
 - **Expo Router** for file-based navigation
+- **Styling** — React Native `StyleSheet` only. Do not add NativeWind unless explicitly decided.
 
 ## Component Architecture
 
@@ -28,70 +29,37 @@ Guide development of the Expo / React Native mobile application for the food rec
 - Do not add a state management library (Redux, Zustand, MobX) unless local state and context genuinely prove insufficient. Document the reason if one is added.
 - For server data, prefer a data-fetching library with caching (e.g., TanStack Query) over manual `useEffect` + `useState` patterns.
 
-### Props and Types
-- Define explicit TypeScript interfaces for all component props.
-- Avoid passing more props than a component needs.
-- Use `children` for composition over configuration.
-
 ## Camera and Photo Features
-
 - Use **expo-camera** for live camera access and **expo-image-picker** for gallery selection.
 - Request permissions at the moment they are needed, not at app launch.
 - Handle all permission states: granted, denied, not determined, and restricted.
 - Show clear, friendly messages when permissions are denied, with a link to device settings.
-- Compress/resize images before uploading — do not send raw multi-megabyte photos to the server.
-
-## Image Selection Flow
-
-1. User chooses camera or gallery.
-2. App requests permission (if not yet granted).
-3. Image is captured or selected.
-4. Image is compressed/resized on-device.
-5. A preview is shown with a "Scan" / "Analyze" action.
-6. Image is uploaded to the server; a loading state is shown.
-7. Results are displayed; errors are shown with a retry option.
+- Compress/resize images on-device before uploading to the backend.
 
 ## Loading, Error, and Empty States
-
 Every screen and async operation must handle:
-
-- **Loading** — show a spinner, skeleton, or progress indicator. Never leave the screen blank.
-- **Error** — show what went wrong in plain language and offer a retry or fallback action. Never show raw error objects or stack traces to the user.
-- **Empty** — when there is no data yet (no scan history, no results), show a helpful empty state, not a blank screen.
-
-## Mobile Performance
-
-- Avoid unnecessary re-renders. Use `React.memo`, `useMemo`, and `useCallback` only where profiling shows a real performance issue — not preemptively everywhere.
-- Use **FlatList** (not `ScrollView` with `.map()`) for lists of any significant length.
-- Lazy-load heavy screens with `React.lazy` or Expo Router's built-in lazy loading.
-- Keep the JS bundle small: audit dependencies, avoid libraries that pull in large sub-dependencies for a small feature.
+- **Loading** — show a spinner, skeleton, or progress indicator.
+- **Error** — show what went wrong in plain language and offer a retry action. Never show raw error objects.
+- **Empty** — show a helpful empty state when no data exists yet.
 
 ## Accessibility
-
-- Every touchable element must have an accessible label (`accessibilityLabel`).
+- Every touchable element needs an accessible label (`accessibilityLabel`).
 - Use semantic roles (`accessibilityRole`): `"button"`, `"image"`, `"header"`, etc.
-- Ensure sufficient color contrast (4.5:1 for text, 3:1 for large text / UI components).
-- Support dynamic font sizes — do not hardcode font sizes in pixels without `allowFontScaling`.
-- Test with a screen reader (VoiceOver / TalkBack) in mind when designing interactions.
+- Support dynamic font sizes.
 
 ## Dependency Policy
-
-- **Avoid unnecessary dependencies.** Before adding a package, ask: can this be done with Expo SDK, React Native, or a small amount of custom code?
-- When a dependency is needed, prefer well-maintained packages with small footprints.
-- Pin dependency versions. Document why each non-obvious dependency was added.
-- Never install a dependency "just in case" — install it when a feature actually requires it.
+- **Avoid unnecessary dependencies.** Before adding a package, ask: can this be done with Expo SDK or React Native built-ins?
+- Pin dependency versions.
+- Never install a dependency "just in case".
 
 ## Code Organization
-
 ```
 app/                   # Expo Router screens (file-based routing)
-components/            # Reusable UI components
+components/            # Reusable UI components (Button, LoadingSpinner, ErrorMessage)
 hooks/                 # Custom React hooks
-services/              # API calls, business logic
-types/                 # Shared TypeScript types/interfaces
+services/              # API calls to the Next.js backend
+types/                 # Shared TypeScript types
 utils/                 # Pure utility functions
 constants/             # App-wide constants (colors, spacing, config)
-assets/                # Images, fonts, static files
+assets/                # Images, fonts
 ```
-
-This layout is a starting point. Adjust it as the project grows, but keep the principle: each directory has a clear purpose.
