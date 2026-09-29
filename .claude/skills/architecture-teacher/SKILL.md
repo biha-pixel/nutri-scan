@@ -35,10 +35,13 @@ When relevant to the current task, explain these concepts by showing how they ap
 
 ## Architecture Principles for This Project
 
-1. **Prefer simple architecture.** A monolithic server with clear internal modules is correct for this stage. Do not introduce microservices, message queues, or container orchestration unless there is a concrete, demonstrated requirement.
-2. **Two deployable units are enough to start:** the mobile app and one backend server.
-3. **External services (Gemini, USDA, Supabase) are accessed through provider abstractions** so they can be swapped without rewriting the rest of the code.
-4. **Name things after what they do in this project**, not after design patterns ("FoodRecognitionService" not "AbstractStrategyFactoryProxy").
+1. **Modular Monolith.** One Next.js project deployment. Internal code is clearly divided into separated modules (`lib/vision`, `lib/nutrition`, `lib/highlights`, `lib/validation`) with defined responsibilities.
+2. **Prefer simple architecture.** Do not introduce microservices, message queues, or container orchestration unless there is a concrete, demonstrated requirement.
+3. **Two deployable units:** the mobile app and the Next.js backend server.
+4. **Provider abstractions.** External services (Gemini, USDA, Supabase) are accessed through provider abstractions so they can be swapped without rewriting the rest of the code.
+5. **Name things after what they do in this project**, not after design patterns.
+6. **Supabase integration.** For database (PostgreSQL) and Auth (JWT), used only when a feature requires it (like scan history save). RLS ensures users only access their own data.
+7. **Zod validation** at all API boundaries.
 
 ## After Major Changes
 
