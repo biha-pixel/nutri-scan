@@ -8,7 +8,11 @@
     "scheme": "nutritionapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "NSCameraUsageDescription": "NutriScan needs camera access to photograph food for nutritional analysis.",
+        "NSPhotoLibraryUsageDescription": "NutriScan needs photo library access to select food photos for nutritional analysis."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -31,6 +35,13 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "NutriScan needs photo library access to select food photos for nutritional analysis.",
+          "cameraPermission": "NutriScan needs camera access to photograph food for nutritional analysis."
         }
       ]
     ],
