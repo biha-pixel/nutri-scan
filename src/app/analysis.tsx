@@ -1,112 +1,254 @@
 /**
- * Analysis Screen — temporary placeholder for the food analysis step.
+ * Analysis Screen — Displays AI Food Recognition Results.
  *
- * Right now this screen simply:
- * 1. Receives the image URI from the scan screen (via route params)
- * 2. Shows a "loading / analyzing" animation
- * 3. Does NOT call any backend (that comes later when we build the API)
- *
- * WHY IT EXISTS NOW:
- * Even though the backend isn't built yet, creating this screen lets us
- * complete the full user flow from photo → preview → "analyzing..." so we
- * can test navigation and make sure the image URI passes through correctly.
- * This is called a "stub" or "placeholder" — a real screen with fake behaviour
- * that will be filled in with real logic later.
+ * This screen:
+ * 1. Receives the captured image URI from the scan screen via route params
+ * 2. Uploads the image to the Next.js /api/scan endpoint
+ * 3. Handles loading, error, empty, and success states
+ * 4. Displays detected food items with portion estimates and confidence scores
  */
 
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FoodItemCard } from '@/components/food-item-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { scanFoodImage } from '@/services/scan-service';
+import type { FoodItem, FoodRecognitionResult } from '@/types/food';
+
+type AnalysisState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string; code?: string }
+  | { kind: 'success'; data: FoodRecognitionResult };
 
 export default function AnalysisScreen() {
   const router = useRouter();
   const theme = useTheme();
-
-  // Read the imageUri that the scan screen passed via router.push({ params })
   const { imageUri } = useLocalSearchParams<{ imageUri: string }>();
 
-  // Simulated analysis states
-  const [status, setStatus] = useState<'analyzing' | 'done'>('analyzing');
+  const [state, setState] = useState<AnalysisState>({ kind: 'loading' });
 
-  /**
-   * Simulate an analysis delay.
-   *
-   * In the real implementation, this useEffect will be replaced with an
-   * actual API call to our Next.js backend, which will:
-   *   1. Upload the image
-   *   2. Send it to the AI vision model for food identification
-   *   3. Look up nutrition data from USDA
-   *   4. Return the results
-   *
-   * For now, we just wait 3 seconds to simulate the experience.
-   */
+  const performAnalysis = useCallback(async () => {
+    if (!imageUri) {
+      setState({
+        kind: 'error',
+        message: 'No image was provided for analysis. Please return to the scan screen and select an image.',
+        code: 'MISSING_IMAGE_URI',
+      });
+      return;
+    }
+
+    setState({ kind: 'loading' });
+
+    try {
+      const result = await scanFoodImage(imageUri);
+      setState({ kind: 'success', data: result });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'An unexpected error occurred during analysis.';
+      const code = (error as { code?: string })?.code;
+      setState({ kind: 'error', message, code });
+    }
+  }, [imageUri]);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setStatus('done');
-    }, 3000);
-
-    // Cleanup: if the user leaves this screen before the timer fires,
-    // cancel the timer so it doesn't try to update state on an unmounted component.
-    return () => clearTimeout(timer);
-  }, []);
+    performAnalysis();
+  }, [performAnalysis]);
 
   function handleGoBack(): void {
     router.back();
   }
 
+  function handleScanAnother(): void {
+    router.replace('/scan');
+  }
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        {status === 'analyzing' && (
-          <ThemedView style={styles.centered}>
-            <ActivityIndicator size="large" color={theme.text} />
-            <ThemedText type="subtitle" style={styles.title}>
-              Analyzing...
+        {/* HEADER */}
+        <View style={styles.header}>
+          <Pressable
+            onPress={handleGoBack}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <ThemedText style={styles.backButtonText}>← Back</ThemedText>
+          </Pressable>
+          <ThemedText type="subtitle" style={styles.headerTitle}>
+            Food Recognition
+          </ThemedText>
+          <View style={styles.headerSpacer} />
+        </View>
+
+        {/* LOADING STATE */}
+        {state.kind === 'loading' && (
+          <View style={styles.centered}>
+            {imageUri ? (
+              <Image
+                source={{ uri: imageUri }}
+                style={styles.loadingThumbnail}
+                contentFit="cover"
+              />
+            ) : null}
+            <ActivityIndicator size="large" color="#34C759" style={styles.spinner} />
+            <ThemedText style={styles.loadingTitle}>
+              Analyzing Food Photo...
             </ThemedText>
-            <ThemedText style={styles.subtitle} themeColor="textSecondary">
-              Identifying food items in your photo
+            <ThemedText style={styles.loadingSubtitle} themeColor="textSecondary">
+              Our AI vision service is identifying food items and estimating portions.
             </ThemedText>
-          </ThemedView>
+          </View>
         )}
 
-        {status === 'done' && (
-          <ThemedView style={styles.centered}>
-            <ThemedText style={styles.checkmark}>✅</ThemedText>
-            <ThemedText type="subtitle" style={styles.title}>
-              Analysis Complete
+        {/* ERROR STATE */}
+        {state.kind === 'error' && (
+          <View style={styles.centered}>
+            <ThemedText style={styles.errorIcon}>⚠️</ThemedText>
+            <ThemedText type="subtitle" style={styles.errorTitle}>
+              Recognition Failed
             </ThemedText>
-            <ThemedText style={styles.subtitle} themeColor="textSecondary">
-              This is a placeholder screen.{'\n'}Backend integration coming soon!
+            <ThemedText style={styles.errorMessage} themeColor="textSecondary">
+              {state.message}
             </ThemedText>
 
-            {imageUri && (
-              <ThemedView
-                type="backgroundElement"
-                style={styles.debugInfo}
+            <View style={styles.actionButtonsRow}>
+              <Pressable
+                onPress={performAnalysis}
+                style={({ pressed }) => [
+                  styles.actionBtn,
+                  styles.primaryActionBtn,
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Retry analysis"
               >
-                <ThemedText type="code">Image URI received ✓</ThemedText>
-              </ThemedView>
-            )}
+                <ThemedText style={styles.primaryActionBtnText}>Try Again</ThemedText>
+              </Pressable>
 
-            <Pressable
-              onPress={handleGoBack}
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: theme.backgroundElement },
-                pressed && styles.pressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Go back to scan screen"
-            >
-              <ThemedText>← Scan Another</ThemedText>
-            </Pressable>
-          </ThemedView>
+              <Pressable
+                onPress={handleScanAnother}
+                style={({ pressed }) => [
+                  styles.actionBtn,
+                  { borderColor: theme.textSecondary, borderWidth: 1.5 },
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Scan another photo"
+              >
+                <ThemedText themeColor="textSecondary">Scan Another</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {/* SUCCESS STATE */}
+        {state.kind === 'success' && (
+          <FlatList
+            data={state.data.items}
+            keyExtractor={(item, index) => `${item.name}-${index}`}
+            renderItem={({ item }: { item: FoodItem }) => <FoodItemCard item={item} />}
+            contentContainerStyle={styles.listContent}
+            ListHeaderComponent={
+              <View style={styles.listHeader}>
+                {/* Photo Thumbnail & Quality Card */}
+                <ThemedView type="backgroundElement" style={styles.summaryCard}>
+                  {imageUri ? (
+                    <Image
+                      source={{ uri: imageUri }}
+                      style={styles.summaryThumbnail}
+                      contentFit="cover"
+                      accessibilityLabel="Photo analyzed"
+                    />
+                  ) : null}
+                  <View style={styles.summaryDetails}>
+                    <ThemedText style={styles.summaryTitle}>
+                      {state.data.items.length === 1
+                        ? '1 Food Item Found'
+                        : `${state.data.items.length} Food Items Found`}
+                    </ThemedText>
+                    <View style={styles.badgeRow}>
+                      <View
+                        style={[
+                          styles.qualityBadge,
+                          {
+                            backgroundColor:
+                              state.data.imageQuality === 'good'
+                                ? '#34C759'
+                                : state.data.imageQuality === 'poor'
+                                ? '#FF9500'
+                                : '#FF3B30',
+                          },
+                        ]}
+                      >
+                        <ThemedText style={styles.qualityBadgeText}>
+                          {state.data.imageQuality === 'good'
+                            ? 'Good Quality'
+                            : state.data.imageQuality === 'poor'
+                            ? 'Low Clarity'
+                            : 'Unrecognizable'}
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </View>
+                </ThemedView>
+
+                {/* Optional Message from Vision Service */}
+                {state.data.message ? (
+                  <ThemedView type="backgroundElement" style={styles.messageBanner}>
+                    <ThemedText style={styles.messageText} themeColor="textSecondary">
+                      ℹ️ {state.data.message}
+                    </ThemedText>
+                  </ThemedView>
+                ) : null}
+
+                {/* Empty Items Message */}
+                {state.data.items.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <ThemedText style={styles.emptyIcon}>🍽️</ThemedText>
+                    <ThemedText style={styles.emptyTitle}>
+                      No Food Detected
+                    </ThemedText>
+                    <ThemedText style={styles.emptyText} themeColor="textSecondary">
+                      The AI model did not find any recognizable food in this photo. Try taking a clearer photo closer to your meal with good lighting.
+                    </ThemedText>
+                  </View>
+                ) : (
+                  <ThemedText style={styles.sectionTitle}>
+                    Detected Items
+                  </ThemedText>
+                )}
+              </View>
+            }
+            ListFooterComponent={
+              <View style={styles.listFooter}>
+                <Pressable
+                  onPress={handleScanAnother}
+                  style={({ pressed }) => [
+                    styles.scanAnotherBtn,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scan another food item"
+                >
+                  <ThemedText style={styles.scanAnotherBtnText}>📷  Scan Another Food</ThemedText>
+                </Pressable>
+              </View>
+            }
+          />
         )}
       </SafeAreaView>
     </ThemedView>
@@ -119,35 +261,169 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two,
+  },
+  backButton: {
+    paddingVertical: Spacing.two,
+    paddingRight: Spacing.three,
+  },
+  backButtonText: {
+    fontSize: 16,
+  },
+  headerTitle: {
+    fontSize: 18,
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 48,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: Spacing.four,
     gap: Spacing.three,
   },
-  title: {
+  loadingThumbnail: {
+    width: 140,
+    height: 140,
+    borderRadius: Spacing.three,
+    marginBottom: Spacing.two,
+  },
+  spinner: {
+    marginVertical: Spacing.two,
+  },
+  loadingTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     textAlign: 'center',
   },
-  subtitle: {
+  loadingSubtitle: {
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 300,
+  },
+  errorIcon: {
+    fontSize: 48,
+  },
+  errorTitle: {
+    textAlign: 'center',
+  },
+  errorMessage: {
     textAlign: 'center',
     lineHeight: 22,
   },
-  checkmark: {
-    fontSize: 48,
-  },
-  debugInfo: {
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.two,
-    marginTop: Spacing.three,
-  },
-  button: {
-    paddingHorizontal: Spacing.five,
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.three,
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
     marginTop: Spacing.four,
+  },
+  actionBtn: {
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Spacing.three,
+    alignItems: 'center',
+  },
+  primaryActionBtn: {
+    backgroundColor: '#34C759',
+  },
+  primaryActionBtnText: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  listContent: {
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.six,
+  },
+  listHeader: {
+    marginBottom: Spacing.three,
+  },
+  summaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+    marginVertical: Spacing.three,
+    gap: Spacing.three,
+  },
+  summaryThumbnail: {
+    width: 70,
+    height: 70,
+    borderRadius: Spacing.two,
+  },
+  summaryDetails: {
+    flex: 1,
+    gap: Spacing.one,
+  },
+  summaryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  qualityBadge: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.half,
+    borderRadius: Spacing.one,
+  },
+  qualityBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  messageBanner: {
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+    marginBottom: Spacing.three,
+  },
+  messageText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginVertical: Spacing.two,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: Spacing.five,
+    gap: Spacing.two,
+  },
+  emptyIcon: {
+    fontSize: 40,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  emptyText: {
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: Spacing.four,
+  },
+  listFooter: {
+    marginTop: Spacing.four,
+    marginBottom: Spacing.four,
+  },
+  scanAnotherBtn: {
+    backgroundColor: '#34C759',
+    paddingVertical: Spacing.three + Spacing.one,
+    borderRadius: Spacing.three,
+    alignItems: 'center',
+  },
+  scanAnotherBtnText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 16,
   },
   pressed: {
     opacity: 0.7,
