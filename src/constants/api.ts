@@ -50,4 +50,13 @@ export const API_ENDPOINTS = {
   get scan() {
     return `${getApiBaseUrl()}/api/scan`;
   },
+  get analyzeFood() {
+    return `${getApiBaseUrl()}/api/analyze-food`;
+  },
+  get scans() {
+    return `${getApiBaseUrl()}/api/scans`;
+  },
+  scanById(id: string) {
+    return `${getApiBaseUrl()}/api/scans/${id}`;
+  },
 } as const;
