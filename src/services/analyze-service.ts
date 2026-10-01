@@ -25,6 +25,7 @@
  * ```
  */
 
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { API_ENDPOINTS } from '@/constants/api';
 import type {
@@ -79,13 +80,19 @@ export async function analyzeFoodImage(
       );
     }
 
+    // Fix URL-encoded characters in Expo Go Android cache paths (e.g. %40 -> @, %2F -> /)
+    const normalizedUri =
+      Platform.OS === 'android'
+        ? imageUri.replace(/%40/g, '@').replace(/%2F/g, '/')
+        : imageUri;
+
     // Infer MIME type securely (defaults to image/jpeg if unknown)
-    const { mimeType } = getImageMeta(imageUri);
+    const { mimeType } = getImageMeta(normalizedUri);
 
     // Stage 2: Analyzing — Upload image and wait for AI recognition
     onProgress?.('analyzing');
 
-    const uploadResult = await FileSystem.uploadAsync(API_ENDPOINTS.analyzeFood, imageUri, {
+    const uploadResult = await FileSystem.uploadAsync(API_ENDPOINTS.analyzeFood, normalizedUri, {
       httpMethod: 'POST',
       uploadType: FileSystem.FileSystemUploadType.MULTIPART,
       fieldName: 'image',
