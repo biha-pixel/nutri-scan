@@ -72,16 +72,21 @@ export async function analyzeFoodImage(
     // Stage 1: Preparing — Local validation
     onProgress?.('preparing');
 
-    const fileInfo = await FileSystem.getInfoAsync(imageUri);
-    if (!fileInfo.exists) {
-      throw new AnalyzeServiceError(
-        'The selected image file no longer exists. Please try selecting another photo.',
-        'FILE_NOT_FOUND'
-      );
+    // On Android, content:// URIs can return false from getInfoAsync.
+    // Skip existence check for content:// URIs and assume they are valid.
+    const isContentUri = imageUri.startsWith('content://');
+    if (!isContentUri) {
+      const fileInfo = await FileSystem.getInfoAsync(imageUri);
+      if (!fileInfo.exists) {
+        throw new AnalyzeServiceError(
+          'The selected image file no longer exists. Please try selecting another photo.',
+          'FILE_NOT_FOUND'
+        );
+      }
     }
 
-    // Infer MIME type from file extension
-    const mimeType = getMimeTypeFromUri(imageUri);
+    // Infer MIME type securely
+    const { mimeType } = getImageMeta(imageUri);
     if (!mimeType) {
       throw new AnalyzeServiceError(
         'Unsupported image format. Please use JPEG, PNG, WebP, or HEIC.',
@@ -178,21 +183,31 @@ export async function analyzeFoodImage(
 
 /**
  * Infer MIME type from file URI extension.
- * Returns null for unsupported formats.
+ * Defaults to 'image/jpeg' to prevent valid uploads from being rejected due to missing extensions.
  */
-function getMimeTypeFromUri(uri: string): string | null {
-  const extension = uri.split('.').pop()?.toLowerCase();
-  switch (extension) {
-    case 'jpg':
-    case 'jpeg':
-      return 'image/jpeg';
-    case 'png':
-      return 'image/png';
-    case 'webp':
-      return 'image/webp';
-    case 'heic':
-      return 'image/heic';
-    default:
-      return null;
+function getImageMeta(uri: string): { fileName: string; mimeType: string } {
+  const cleanUri = uri.split('?')[0].split('#')[0];
+  const extension = cleanUri.split('.').pop()?.toLowerCase() || 'jpg';
+
+  let mimeType = 'image/jpeg';
+  let validExt = 'jpg';
+
+  if (extension === 'png') {
+    mimeType = 'image/png';
+    validExt = 'png';
+  } else if (extension === 'webp') {
+    mimeType = 'image/webp';
+    validExt = 'webp';
+  } else if (extension === 'heic') {
+    mimeType = 'image/heic';
+    validExt = 'heic';
+  } else if (extension === 'jpeg' || extension === 'jpg') {
+    mimeType = 'image/jpeg';
+    validExt = 'jpg';
   }
+
+  const rawFileName = cleanUri.split('/').pop() || `food-photo.${validExt}`;
+  const fileName = rawFileName.includes('.') ? rawFileName : `${rawFileName}.${validExt}`;
+
+  return { fileName, mimeType };
 }

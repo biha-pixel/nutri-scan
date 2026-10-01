@@ -1,8 +1,0 @@
-{
-  "/api/analyze-food/route": "/api/analyze-food",
-  "/api/scan/route": "/api/scan",
-  "/api/scans/route": "/api/scans",
-  "/api/nutrition/lookup/route": "/api/nutrition/lookup",
-  "/api/scans/[id]/route": "/api/scans/[id]",
-  "/api/nutrition/details/route": "/api/nutrition/details"
-}

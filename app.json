@@ -8,6 +8,7 @@
     "scheme": "nutritionapp",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.nutriscan.app",
       "icon": "./assets/expo.icon",
       "infoPlist": {
         "NSCameraUsageDescription": "NutriScan needs camera access to photograph food for nutritional analysis.",
@@ -15,6 +16,7 @@
       }
     },
     "android": {
+      "package": "com.nutriscan.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

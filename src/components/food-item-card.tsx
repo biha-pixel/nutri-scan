@@ -17,8 +17,6 @@ import {
   View,
   Pressable,
   LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -31,14 +29,6 @@ import type {
   Macronutrients,
   Micronutrients,
 } from '@/types/food';
-
-// Enable LayoutAnimation for Android
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 interface FoodItemCardProps {
   item: AnalyzedFoodItem;

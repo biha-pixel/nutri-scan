@@ -1,8 +1,3 @@
 {
-  "/api/analyze-food/route": "app/api/analyze-food/route.js",
-  "/api/scan/route": "app/api/scan/route.js",
-  "/api/scans/route": "app/api/scans/route.js",
-  "/api/nutrition/lookup/route": "app/api/nutrition/lookup/route.js",
-  "/api/scans/[id]/route": "app/api/scans/[id]/route.js",
-  "/api/nutrition/details/route": "app/api/nutrition/details/route.js"
+  "/_not-found/page": "app/_not-found/page.js"
 }

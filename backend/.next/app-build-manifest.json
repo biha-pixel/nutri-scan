@@ -1,46 +1,14 @@
 {
   "pages": {
     "/api/analyze-food/route": [
-      "static/chunks/webpack-cf8e54af1fb67e68.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/58-67535626c9d09bd8.js",
-      "static/chunks/main-app-c1532ef50aa77d54.js",
-      "static/chunks/app/api/analyze-food/route-6af3103f93ac6878.js"
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/analyze-food/route.js"
     ],
-    "/api/scan/route": [
-      "static/chunks/webpack-cf8e54af1fb67e68.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/58-67535626c9d09bd8.js",
-      "static/chunks/main-app-c1532ef50aa77d54.js",
-      "static/chunks/app/api/scan/route-6af3103f93ac6878.js"
-    ],
-    "/api/scans/route": [
-      "static/chunks/webpack-cf8e54af1fb67e68.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/58-67535626c9d09bd8.js",
-      "static/chunks/main-app-c1532ef50aa77d54.js",
-      "static/chunks/app/api/scans/route-6af3103f93ac6878.js"
-    ],
-    "/api/nutrition/lookup/route": [
-      "static/chunks/webpack-cf8e54af1fb67e68.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/58-67535626c9d09bd8.js",
-      "static/chunks/main-app-c1532ef50aa77d54.js",
-      "static/chunks/app/api/nutrition/lookup/route-6af3103f93ac6878.js"
-    ],
-    "/api/scans/[id]/route": [
-      "static/chunks/webpack-cf8e54af1fb67e68.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/58-67535626c9d09bd8.js",
-      "static/chunks/main-app-c1532ef50aa77d54.js",
-      "static/chunks/app/api/scans/[id]/route-6af3103f93ac6878.js"
-    ],
-    "/api/nutrition/details/route": [
-      "static/chunks/webpack-cf8e54af1fb67e68.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/58-67535626c9d09bd8.js",
-      "static/chunks/main-app-c1532ef50aa77d54.js",
-      "static/chunks/app/api/nutrition/details/route-6af3103f93ac6878.js"
+    "/_not-found/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }
