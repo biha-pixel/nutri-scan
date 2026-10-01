@@ -47,42 +47,37 @@ describe("Database Zod Schemas", () => {
     it("validates a complete scan item", () => {
       const itemData = {
         foodName: "Grilled Chicken Breast",
-        canonicalName: "Chicken breast, grilled",
         confidence: 0.94,
-        description: "Boneless, skinless grilled chicken breast",
-        estimatedPortion: "150g",
-        servingAmount: 150,
-        servingUnit: "g",
-        calories: 247.5,
-        nutritionStatus: "found",
-        macronutrients: {
-          protein: 46.5,
-          totalFat: 5.4,
-          saturatedFat: 1.5,
-          carbohydrates: 0,
-          fiber: 0,
-          sugar: 0,
+        nutritionSource: "usda_fdc",
+        nutritionId: "171077",
+        servingBasis: "150g",
+        nutrients: {
+          calories: 247.5,
+          macronutrients: {
+            protein: 46.5,
+            totalFat: 5.4,
+            saturatedFat: 1.5,
+            carbohydrates: 0,
+            fiber: 0,
+            sugar: 0,
+          },
+          micronutrients: {
+            sodium: 111,
+            cholesterol: 127.5,
+            potassium: 384,
+            vitaminA: null,
+            vitaminC: null,
+            calcium: 22.5,
+            iron: 1.56,
+          },
         },
-        micronutrients: {
-          sodium: 111,
-          cholesterol: 127.5,
-          potassium: 384,
-          vitaminA: null,
-          vitaminC: null,
-          calcium: 22.5,
-          iron: 1.56,
-        },
-        source: "usda_fdc",
-        sourceId: "171077",
-        sourceUrl: "https://fdc.nal.usda.gov/fdc-app.html#/food-details/171077/nutrients",
-        matchConfidence: "exact",
         highlights: [
           {
             text: "High in protein",
             description: "Contains 46.5g protein",
             nutrient: "protein",
             level: "high",
-            category: "macronutrient",
+            category: "macronutrient" as const,
             referenceBasis: "FDA 21 CFR 101.54",
             priority: 95,
           },
@@ -94,14 +89,13 @@ describe("Database Zod Schemas", () => {
       if (result.success) {
         expect(result.data.foodName).toBe("Grilled Chicken Breast");
         expect(result.data.confidence).toBe(0.94);
-        expect(result.data.macronutrients.protein).toBe(46.5);
+        expect(result.data.nutrients.macronutrients.protein).toBe(46.5);
       }
     });
 
     it("rejects items with missing food name or invalid confidence", () => {
       const invalidItem = {
         foodName: "",
-        canonicalName: "Apple",
         confidence: 1.5, // exceeds max 1.0
       };
 
@@ -114,17 +108,15 @@ describe("Database Zod Schemas", () => {
     it("validates a full scan with multiple items", () => {
       const scanData = {
         userId: "550e8400-e29b-41d4-a716-446655440000",
-        imageRef: null,
-        imageQuality: "good",
-        notes: "Lunch meal scan",
+        imageUrl: null,
         items: [
           {
             foodName: "Banana",
-            canonicalName: "Bananas, raw",
             confidence: 0.98,
-            servingAmount: 100,
-            servingUnit: "g",
-            calories: 89,
+            servingBasis: "100g",
+            nutrients: {
+              calories: 89,
+            },
           },
         ],
       };
@@ -134,7 +126,7 @@ describe("Database Zod Schemas", () => {
       if (result.success) {
         expect(result.data.userId).toBe("550e8400-e29b-41d4-a716-446655440000");
         expect(result.data.items).toHaveLength(1);
-        expect(result.data.imageRef).toBeNull();
+        expect(result.data.imageUrl).toBeNull();
       }
     });
 
@@ -154,7 +146,6 @@ describe("Database Zod Schemas", () => {
         items: [
           {
             foodName: "Apple",
-            canonicalName: "Apples, raw",
             confidence: 0.9,
           },
         ],

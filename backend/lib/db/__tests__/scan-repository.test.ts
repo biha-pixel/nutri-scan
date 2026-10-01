@@ -43,20 +43,15 @@ describe("ScanRepository", () => {
           id: "item-uuid-1",
           scan_id: "scan-uuid-1",
           food_name: "Apple",
-          canonical_name: "Apples, raw",
           confidence: 0.95,
-          description: null,
-          estimated_portion: "1 medium",
-          serving_amount: 100,
-          serving_unit: "g",
-          calories: 52,
-          nutrition_status: "found",
-          macronutrients: { protein: 0.3, totalFat: 0.2 },
-          micronutrients: { potassium: 107 },
-          source: "usda_fdc",
-          source_id: "1750339",
-          source_url: null,
-          match_confidence: "exact",
+          nutrition_source: "usda_fdc",
+          nutrition_id: "1750339",
+          serving_basis: "100g",
+          nutrients: {
+            calories: 52,
+            macronutrients: { protein: 0.3, totalFat: 0.2 },
+            micronutrients: { potassium: 107 },
+          },
           highlights: [],
           created_at: "2026-10-01T12:00:00Z",
         },
@@ -76,24 +71,22 @@ describe("ScanRepository", () => {
       };
 
       mockSupabase.from.mockImplementation((table: string) => {
-        if (table === "food_scans") return mockScanInsertChain;
+        if (table === "scans") return mockScanInsertChain;
         if (table === "scan_items") return mockItemsInsertChain;
         return {};
       });
 
       const savedScan = await repository.saveScan({
         userId: "550e8400-e29b-41d4-a716-446655440000",
-        imageQuality: "good",
-        notes: "Test note",
+        imageUrl: "https://example.com/apple.jpg",
         items: [
           {
             foodName: "Apple",
-            canonicalName: "Apples, raw",
             confidence: 0.95,
-            estimatedPortion: "1 medium",
-            servingAmount: 100,
-            servingUnit: "g",
-            calories: 52,
+            servingBasis: "100g",
+            nutrients: {
+              calories: 52,
+            },
           },
         ],
       });
@@ -102,7 +95,7 @@ describe("ScanRepository", () => {
       expect(savedScan.userId).toBe("550e8400-e29b-41d4-a716-446655440000");
       expect(savedScan.items).toHaveLength(1);
       expect(savedScan.items[0].foodName).toBe("Apple");
-      expect(savedScan.items[0].calories).toBe(52);
+      expect(savedScan.items[0].nutrients.calories).toBe(52);
     });
 
     it("cleans up orphaned parent scan if inserting items fails", async () => {
@@ -129,7 +122,7 @@ describe("ScanRepository", () => {
       };
 
       mockSupabase.from.mockImplementation((table: string) => {
-        if (table === "food_scans") return mockScanChain;
+        if (table === "scans") return mockScanChain;
         if (table === "scan_items") return mockItemsChain;
         return {};
       });
@@ -140,7 +133,6 @@ describe("ScanRepository", () => {
           items: [
             {
               foodName: "Apple",
-              canonicalName: "Apples, raw",
               confidence: 0.95,
             },
           ],
@@ -159,24 +151,20 @@ describe("ScanRepository", () => {
         {
           id: "scan-1",
           user_id: "550e8400-e29b-41d4-a716-446655440000",
-          image_ref: null,
-          image_quality: "good",
-          notes: "Breakfast",
+          image_url: null,
           created_at: "2026-10-01T08:00:00Z",
           scan_items: [
             {
               id: "item-1",
               scan_id: "scan-1",
               food_name: "Oatmeal",
-              canonical_name: "Oatmeal, cooked",
               confidence: 0.92,
-              serving_amount: 100,
-              serving_unit: "g",
-              calories: 68,
-              nutrition_status: "found",
-              macronutrients: {},
-              micronutrients: {},
-              source: "usda_fdc",
+              nutrition_source: "usda_fdc",
+              nutrition_id: "12345",
+              serving_basis: "100g",
+              nutrients: {
+                calories: 68,
+              },
               highlights: [],
               created_at: "2026-10-01T08:00:00Z",
             },
@@ -240,9 +228,7 @@ describe("ScanRepository", () => {
       const mockScanData = {
         id: "scan-123",
         user_id: "550e8400-e29b-41d4-a716-446655440000",
-        image_ref: null,
-        image_quality: "good",
-        notes: null,
+        image_url: null,
         created_at: "2026-10-01T08:00:00Z",
         scan_items: [],
       };
