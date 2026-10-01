@@ -12,6 +12,7 @@
  * with our own backend API and has ZERO knowledge of OmniRoute, Gemini, or any API keys.
  */
 
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { API_ENDPOINTS, getApiBaseUrl } from '@/constants/api';
@@ -71,12 +72,18 @@ export async function scanFoodImage(imageUri: string): Promise<FoodRecognitionRe
   const endpoint = API_ENDPOINTS.scan;
   const baseUrl = getApiBaseUrl();
 
-  const { mimeType } = getImageMeta(imageUri);
+  // Fix URL-encoded characters in Expo Go Android cache paths (e.g. %40 -> @, %2F -> /)
+  const normalizedUri =
+    Platform.OS === 'android'
+      ? imageUri.replace(/%40/g, '@').replace(/%2F/g, '/')
+      : imageUri;
+
+  const { mimeType } = getImageMeta(normalizedUri);
 
   console.log(`[scan-service] Uploading food image to ${endpoint} (MIME: ${mimeType})`);
 
   try {
-    const uploadResult = await FileSystem.uploadAsync(endpoint, imageUri, {
+    const uploadResult = await FileSystem.uploadAsync(endpoint, normalizedUri, {
       httpMethod: 'POST',
       uploadType: FileSystem.FileSystemUploadType.MULTIPART,
       fieldName: 'image',
