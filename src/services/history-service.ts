@@ -1,0 +1,242 @@
+/**
+ * History Service — Handles scan persistence and history retrieval.
+ *
+ * Responsibilities:
+ * 1. Fetch paginated scan history for the authenticated user from GET /api/scans
+ * 2. Save newly analyzed food scans via POST /api/scans
+ * 3. Fetch single scan details via GET /api/scans/[id]
+ * 4. Delete scans via DELETE /api/scans/[id]
+ * 5. Convert FoodAnalysisResult domain models into CreateScanPayload for persistence
+ *
+ * SECURITY NOTE:
+ * JWT access tokens are forwarded in the `Authorization: Bearer <token>` header.
+ * The backend verifies this token with Supabase Auth and enforces Row Level Security (RLS)
+ * so that users can strictly read, create, and delete their own scan history.
+ */
+
+import { API_ENDPOINTS, getApiBaseUrl } from '@/constants/api';
+import type {
+  CreateScanPayload,
+  DeleteScanApiResponse,
+  FoodAnalysisResult,
+  SavedScan,
+  SavedScanApiResponse,
+  ScanHistoryApiResponse,
+  ScanHistoryData,
+} from '@/types/food';
+
+export class HistoryServiceError extends Error {
+  code: string;
+
+  constructor(message: string, code: string = 'HISTORY_ERROR') {
+    super(message);
+    this.name = 'HistoryServiceError';
+    this.code = code;
+  }
+}
+
+interface FetchHistoryOptions {
+  token?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Fetch paginated food scan history for the current authenticated user.
+ */
+export async function fetchScanHistory(options: FetchHistoryOptions = {}): Promise<ScanHistoryData> {
+  const { token, limit = 20, offset = 0 } = options;
+  const baseUrl = API_ENDPOINTS.scans;
+  const url = `${baseUrl}?limit=${limit}&offset=${offset}`;
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    const json: ScanHistoryApiResponse = await response.json();
+
+    if (!response.ok || !json.success) {
+      const message = (!json.success && json.error?.message) || `Failed to fetch history (HTTP ${response.status})`;
+      const code = (!json.success && json.error?.code) || 'FETCH_ERROR';
+      throw new HistoryServiceError(message, code);
+    }
+
+    return json.data;
+  } catch (error) {
+    if (error instanceof HistoryServiceError) {
+      throw error;
+    }
+    const rawMessage = error instanceof Error ? error.message : 'Unknown network failure';
+    throw new HistoryServiceError(
+      `Could not connect to NutriScan backend at ${getApiBaseUrl()}.\n\nDetails: ${rawMessage}`,
+      'NETWORK_ERROR'
+    );
+  }
+}
+
+/**
+ * Save a newly completed food scan to the database.
+ */
+export async function saveScanRecord(
+  payload: CreateScanPayload,
+  token?: string | null
+): Promise<SavedScan> {
+  const url = API_ENDPOINTS.scans;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    const json: SavedScanApiResponse = await response.json();
+
+    if (!response.ok || !json.success) {
+      const message = (!json.success && json.error?.message) || `Failed to save scan (HTTP ${response.status})`;
+      const code = (!json.success && json.error?.code) || 'SAVE_ERROR';
+      throw new HistoryServiceError(message, code);
+    }
+
+    return json.data;
+  } catch (error) {
+    if (error instanceof HistoryServiceError) {
+      throw error;
+    }
+    const rawMessage = error instanceof Error ? error.message : 'Unknown network failure';
+    throw new HistoryServiceError(
+      `Failed to save scan to database.\n\nDetails: ${rawMessage}`,
+      'SAVE_ERROR'
+    );
+  }
+}
+
+/**
+ * Fetch a specific scan record by its UUID.
+ */
+export async function fetchScanById(id: string, token?: string | null): Promise<SavedScan> {
+  const url = API_ENDPOINTS.scanById(id);
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    const json: SavedScanApiResponse = await response.json();
+
+    if (!response.ok || !json.success) {
+      const message = (!json.success && json.error?.message) || `Scan not found (HTTP ${response.status})`;
+      const code = (!json.success && json.error?.code) || 'NOT_FOUND';
+      throw new HistoryServiceError(message, code);
+    }
+
+    return json.data;
+  } catch (error) {
+    if (error instanceof HistoryServiceError) {
+      throw error;
+    }
+    const rawMessage = error instanceof Error ? error.message : 'Unknown network failure';
+    throw new HistoryServiceError(
+      `Failed to retrieve scan details.\n\nDetails: ${rawMessage}`,
+      'FETCH_ERROR'
+    );
+  }
+}
+
+/**
+ * Delete a scan record by its UUID.
+ */
+export async function deleteScanRecord(id: string, token?: string | null): Promise<boolean> {
+  const url = API_ENDPOINTS.scanById(id);
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers,
+    });
+
+    const json: DeleteScanApiResponse = await response.json();
+
+    if (!response.ok || !json.success) {
+      const message = (!json.success && json.error?.message) || `Failed to delete scan (HTTP ${response.status})`;
+      const code = (!json.success && json.error?.code) || 'DELETE_ERROR';
+      throw new HistoryServiceError(message, code);
+    }
+
+    return json.data.deleted;
+  } catch (error) {
+    if (error instanceof HistoryServiceError) {
+      throw error;
+    }
+    const rawMessage = error instanceof Error ? error.message : 'Unknown network failure';
+    throw new HistoryServiceError(
+      `Failed to delete scan record.\n\nDetails: ${rawMessage}`,
+      'DELETE_ERROR'
+    );
+  }
+}
+
+/**
+ * Utility helper to convert a FoodAnalysisResult into a CreateScanPayload ready for backend saving.
+ */
+export function formatAnalysisResultForSave(
+  result: FoodAnalysisResult,
+  userId?: string | null,
+  imageUrl?: string | null
+): CreateScanPayload {
+  return {
+    userId: userId || null,
+    imageUrl: imageUrl || null,
+    items: result.items.map((item) => ({
+      foodName: item.name,
+      confidence: item.confidence,
+      nutritionSource: item.nutrition?.source ?? 'usda_fdc',
+      nutritionId: item.nutrition?.sourceId ?? null,
+      servingBasis:
+        item.estimatedPortion ||
+        (item.nutrition ? `${item.nutrition.servingSize}${item.nutrition.servingUnit}` : '100g'),
+      nutrients: {
+        calories: item.nutrition?.calories ?? null,
+        macronutrients: item.nutrition?.macronutrients,
+        micronutrients: item.nutrition?.micronutrients,
+      },
+      highlights: item.highlights ?? [],
+    })),
+  };
+}

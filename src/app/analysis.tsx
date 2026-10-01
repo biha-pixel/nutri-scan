@@ -1,11 +1,12 @@
 /**
- * Analysis Screen — Displays AI Food Recognition Results.
+ * Analysis Screen — Unified Food Analysis with Nutrition Data.
  *
  * This screen:
  * 1. Receives the captured image URI from the scan screen via route params
- * 2. Uploads the image to the Next.js /api/scan endpoint
- * 3. Handles loading, error, empty, and success states
- * 4. Displays detected food items with portion estimates and confidence scores
+ * 2. Uploads the image to POST /api/analyze-food (unified endpoint)
+ * 3. Displays 4-stage loading progress (preparing → analyzing → nutrition → finalizing)
+ * 4. Handles 7 distinct error types with tailored user guidance
+ * 5. Displays analyzed food items with full nutrition data, macros, and educational highlights
  */
 
 import { Image } from 'expo-image';
@@ -24,46 +25,178 @@ import { FoodItemCard } from '@/components/food-item-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useAuth } from '@/contexts/auth-context';
 import { useTheme } from '@/hooks/use-theme';
-import { scanFoodImage } from '@/services/scan-service';
-import type { FoodItem, FoodRecognitionResult } from '@/types/food';
+import { analyzeFoodImage, AnalyzeServiceError } from '@/services/analyze-service';
+import { formatAnalysisResultForSave, saveScanRecord } from '@/services/history-service';
+import type {
+  AnalyzedFoodItem,
+  FoodAnalysisResult,
+  AnalysisLoadingStage,
+  AnalysisErrorCode,
+} from '@/types/food';
+
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 type AnalysisState =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string; code?: string }
-  | { kind: 'success'; data: FoodRecognitionResult };
+  | { kind: 'loading'; stage: AnalysisLoadingStage }
+  | { kind: 'error'; code: AnalysisErrorCode; message: string; details?: string }
+  | { kind: 'success'; data: FoodAnalysisResult };
+
+// Stage labels for the 4-stage stepper
+const STAGE_LABELS: Record<AnalysisLoadingStage, string> = {
+  preparing: 'Preparing image',
+  analyzing: 'Analyzing image',
+  nutrition: 'Finding nutrition data',
+  finalizing: 'Preparing results',
+};
+
+// Error configurations with user-friendly titles and guidance
+const ERROR_CONFIG: Record<
+  AnalysisErrorCode,
+  { title: string; icon: string; canRetry: boolean }
+> = {
+  NO_FOOD_DETECTED: {
+    title: 'No Food Detected',
+    icon: '🍽️',
+    canRetry: false,
+  },
+  UNCERTAIN_FOOD: {
+    title: 'Unclear Photo',
+    icon: '🤔',
+    canRetry: true,
+  },
+  NUTRITION_UNAVAILABLE: {
+    title: 'Nutrition Data Unavailable',
+    icon: '📊',
+    canRetry: true,
+  },
+  NETWORK_ERROR: {
+    title: 'Connection Problem',
+    icon: '📡',
+    canRetry: true,
+  },
+  AI_FAILURE: {
+    title: 'AI Service Unavailable',
+    icon: '⚠️',
+    canRetry: true,
+  },
+  SERVER_ERROR: {
+    title: 'Server Error',
+    icon: '⚠️',
+    canRetry: true,
+  },
+  INVALID_IMAGE: {
+    title: 'Invalid Image',
+    icon: '🖼️',
+    canRetry: false,
+  },
+};
 
 export default function AnalysisScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { imageUri } = useLocalSearchParams<{ imageUri: string }>();
 
-  const [state, setState] = useState<AnalysisState>({ kind: 'loading' });
+  const { user, session } = useAuth();
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+
+  const [state, setState] = useState<AnalysisState>({
+    kind: 'loading',
+    stage: 'preparing',
+  });
+
+  // Auto-save successful scans for authenticated users
+  useEffect(() => {
+    if (state.kind === 'success' && user && session?.access_token && saveStatus === 'idle') {
+      setSaveStatus('saving');
+
+      const payload = formatAnalysisResultForSave(state.data, user.id);
+
+      saveScanRecord(payload, session.access_token)
+        .then(() => setSaveStatus('saved'))
+        .catch((err) => {
+          console.error('Scan auto-save failed:', err);
+          setSaveStatus('error');
+        });
+    }
+  }, [state, user, session, saveStatus]);
 
   const performAnalysis = useCallback(async () => {
     if (!imageUri) {
       setState({
         kind: 'error',
-        message: 'No image was provided for analysis. Please return to the scan screen and select an image.',
-        code: 'MISSING_IMAGE_URI',
+        code: 'INVALID_IMAGE',
+        message: 'No image was provided for analysis.',
+        details: 'Please return to the scan screen and select an image.',
       });
       return;
     }
 
-    setState({ kind: 'loading' });
+    setState({ kind: 'loading', stage: 'preparing' });
 
     try {
-      const result = await scanFoodImage(imageUri);
+      const result = await analyzeFoodImage(imageUri, (stage) => {
+        setState({ kind: 'loading', stage });
+      });
+
+      // Handle empty results (no food detected)
+      if (result.items.length === 0 || result.imageQuality === 'unrecognizable') {
+        setState({
+          kind: 'error',
+          code: 'NO_FOOD_DETECTED',
+          message: result.message || 'No food items could be detected in this photo.',
+          details:
+            'Try taking a clearer photo closer to your meal with good lighting. Make sure the food is in focus and well-lit.',
+        });
+        return;
+      }
+
+      // Handle poor image quality
+      if (result.imageQuality === 'poor') {
+        setState({
+          kind: 'error',
+          code: 'UNCERTAIN_FOOD',
+          message: 'The photo quality was too low for confident food recognition.',
+          details:
+            'Try retaking the photo with better lighting, focus, and a closer view of the food. Avoid shadows, blurriness, or extreme angles.',
+        });
+        return;
+      }
+
       setState({ kind: 'success', data: result });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'An unexpected error occurred during analysis.';
-      const code = (error as { code?: string })?.code;
-      setState({ kind: 'error', message, code });
+      if (error instanceof AnalyzeServiceError) {
+        // Map service error codes to AnalysisErrorCode
+        let errorCode: AnalysisErrorCode = 'SERVER_ERROR';
+        if (error.code === 'NETWORK_ERROR') {
+          errorCode = 'NETWORK_ERROR';
+        } else if (error.code === 'INVALID_FORMAT' || error.code === 'FILE_NOT_FOUND') {
+          errorCode = 'INVALID_IMAGE';
+        } else if (error.code === 'AI_FAILURE') {
+          errorCode = 'AI_FAILURE';
+        }
+
+        setState({
+          kind: 'error',
+          code: errorCode,
+          message: error.message,
+        });
+      } else {
+        setState({
+          kind: 'error',
+          code: 'SERVER_ERROR',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred during analysis.',
+        });
+      }
     }
   }, [imageUri]);
 
   useEffect(() => {
+    setSaveStatus('idle');
     performAnalysis();
   }, [performAnalysis]);
 
@@ -89,12 +222,12 @@ export default function AnalysisScreen() {
             <ThemedText style={styles.backButtonText}>← Back</ThemedText>
           </Pressable>
           <ThemedText type="subtitle" style={styles.headerTitle}>
-            Food Recognition
+            Food Analysis
           </ThemedText>
           <View style={styles.headerSpacer} />
         </View>
 
-        {/* LOADING STATE */}
+        {/* LOADING STATE WITH 4-STAGE PROGRESS */}
         {state.kind === 'loading' && (
           <View style={styles.centered}>
             {imageUri ? (
@@ -106,65 +239,119 @@ export default function AnalysisScreen() {
             ) : null}
             <ActivityIndicator size="large" color="#34C759" style={styles.spinner} />
             <ThemedText style={styles.loadingTitle}>
-              Analyzing Food Photo...
+              {STAGE_LABELS[state.stage]}
             </ThemedText>
-            <ThemedText style={styles.loadingSubtitle} themeColor="textSecondary">
-              Our AI vision service is identifying food items and estimating portions.
-            </ThemedText>
+
+            {/* 4-Stage Progress Stepper */}
+            <View style={styles.stageIndicator}>
+              {(['preparing', 'analyzing', 'nutrition', 'finalizing'] as const).map(
+                (stage, index) => {
+                  const isActive = state.stage === stage;
+                  const isPast =
+                    ['preparing', 'analyzing', 'nutrition', 'finalizing'].indexOf(
+                      state.stage
+                    ) >
+                    ['preparing', 'analyzing', 'nutrition', 'finalizing'].indexOf(stage);
+
+                  return (
+                    <View key={stage} style={styles.stageRow}>
+                      <View
+                        style={[
+                          styles.stageDot,
+                          isPast && styles.stageDotComplete,
+                          isActive && styles.stageDotActive,
+                        ]}
+                      />
+                      <ThemedText
+                        style={[
+                          styles.stageLabel,
+                          (isActive || isPast) && styles.stageLabelActive,
+                        ]}
+                        themeColor={isActive || isPast ? 'text' : 'textSecondary'}
+                      >
+                        {STAGE_LABELS[stage]}
+                      </ThemedText>
+                    </View>
+                  );
+                }
+              )}
+            </View>
           </View>
         )}
 
-        {/* ERROR STATE */}
+        {/* ERROR STATE WITH TAILORED GUIDANCE */}
         {state.kind === 'error' && (
           <View style={styles.centered}>
-            <ThemedText style={styles.errorIcon}>⚠️</ThemedText>
+            <ThemedText style={styles.errorIcon}>
+              {ERROR_CONFIG[state.code].icon}
+            </ThemedText>
             <ThemedText type="subtitle" style={styles.errorTitle}>
-              Recognition Failed
+              {ERROR_CONFIG[state.code].title}
             </ThemedText>
             <ThemedText style={styles.errorMessage} themeColor="textSecondary">
               {state.message}
             </ThemedText>
+            {state.details ? (
+              <ThemedText style={styles.errorDetails} themeColor="textSecondary">
+                {state.details}
+              </ThemedText>
+            ) : null}
 
             <View style={styles.actionButtonsRow}>
-              <Pressable
-                onPress={performAnalysis}
-                style={({ pressed }) => [
-                  styles.actionBtn,
-                  styles.primaryActionBtn,
-                  pressed && styles.pressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Retry analysis"
-              >
-                <ThemedText style={styles.primaryActionBtnText}>Try Again</ThemedText>
-              </Pressable>
+              {ERROR_CONFIG[state.code].canRetry && (
+                <Pressable
+                  onPress={performAnalysis}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    styles.primaryActionBtn,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry analysis"
+                >
+                  <ThemedText style={styles.primaryActionBtnText}>Try Again</ThemedText>
+                </Pressable>
+              )}
 
               <Pressable
                 onPress={handleScanAnother}
                 style={({ pressed }) => [
                   styles.actionBtn,
-                  { borderColor: theme.textSecondary, borderWidth: 1.5 },
+                  ERROR_CONFIG[state.code].canRetry
+                    ? { borderColor: theme.textSecondary, borderWidth: 1.5 }
+                    : styles.primaryActionBtn,
                   pressed && styles.pressed,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel="Scan another photo"
               >
-                <ThemedText themeColor="textSecondary">Scan Another</ThemedText>
+                <ThemedText
+                  style={
+                    ERROR_CONFIG[state.code].canRetry
+                      ? undefined
+                      : styles.primaryActionBtnText
+                  }
+                  themeColor={ERROR_CONFIG[state.code].canRetry ? 'textSecondary' : undefined}
+                >
+                  Scan Another
+                </ThemedText>
               </Pressable>
             </View>
           </View>
         )}
 
-        {/* SUCCESS STATE */}
+        {/* SUCCESS STATE WITH FULL NUTRITION DATA */}
         {state.kind === 'success' && (
           <FlatList
             data={state.data.items}
-            keyExtractor={(item, index) => `${item.name}-${index}`}
-            renderItem={({ item }: { item: FoodItem }) => <FoodItemCard item={item} />}
+            keyExtractor={(item, index) => `${item.canonicalName}-${index}`}
+            renderItem={({ item }: { item: AnalyzedFoodItem }) => (
+              <FoodItemCard item={item} />
+            )}
             contentContainerStyle={styles.listContent}
             ListHeaderComponent={
               <View style={styles.listHeader}>
-                {/* Photo Thumbnail & Quality Card */}
+                {/* Photo Thumbnail & Summary Card */}
                 <ThemedView type="backgroundElement" style={styles.summaryCard}>
                   {imageUri ? (
                     <Image
@@ -202,6 +389,14 @@ export default function AnalysisScreen() {
                             : 'Unrecognizable'}
                         </ThemedText>
                       </View>
+
+                      {user && (saveStatus === 'saving' || saveStatus === 'saved') && (
+                        <View style={[styles.qualityBadge, { backgroundColor: saveStatus === 'saved' ? '#3C87F7' : '#8E8E93' }]}>
+                          <ThemedText style={styles.qualityBadgeText}>
+                            {saveStatus === 'saved' ? '✓ Saved' : 'Saving...'}
+                          </ThemedText>
+                        </View>
+                      )}
                     </View>
                   </View>
                 </ThemedView>
@@ -215,22 +410,7 @@ export default function AnalysisScreen() {
                   </ThemedView>
                 ) : null}
 
-                {/* Empty Items Message */}
-                {state.data.items.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <ThemedText style={styles.emptyIcon}>🍽️</ThemedText>
-                    <ThemedText style={styles.emptyTitle}>
-                      No Food Detected
-                    </ThemedText>
-                    <ThemedText style={styles.emptyText} themeColor="textSecondary">
-                      The AI model did not find any recognizable food in this photo. Try taking a clearer photo closer to your meal with good lighting.
-                    </ThemedText>
-                  </View>
-                ) : (
-                  <ThemedText style={styles.sectionTitle}>
-                    Detected Items
-                  </ThemedText>
-                )}
+                <ThemedText style={styles.sectionTitle}>Nutrition Results</ThemedText>
               </View>
             }
             ListFooterComponent={
@@ -244,7 +424,9 @@ export default function AnalysisScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Scan another food item"
                 >
-                  <ThemedText style={styles.scanAnotherBtnText}>📷  Scan Another Food</ThemedText>
+                  <ThemedText style={styles.scanAnotherBtnText}>
+                    📷 Scan Another Food
+                  </ThemedText>
                 </Pressable>
               </View>
             }
@@ -304,10 +486,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  loadingSubtitle: {
-    textAlign: 'center',
-    lineHeight: 22,
+  stageIndicator: {
+    marginTop: Spacing.four,
+    gap: Spacing.two,
+    alignSelf: 'stretch',
     maxWidth: 300,
+  },
+  stageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  stageDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#8E8E93',
+  },
+  stageDotActive: {
+    backgroundColor: '#34C759',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  stageDotComplete: {
+    backgroundColor: '#34C759',
+  },
+  stageLabel: {
+    fontSize: 14,
+  },
+  stageLabelActive: {
+    fontWeight: '600',
   },
   errorIcon: {
     fontSize: 48,
@@ -318,6 +527,14 @@ const styles = StyleSheet.create({
   errorMessage: {
     textAlign: 'center',
     lineHeight: 22,
+    fontSize: 15,
+  },
+  errorDetails: {
+    textAlign: 'center',
+    lineHeight: 20,
+    fontSize: 13,
+    fontStyle: 'italic',
+    maxWidth: 320,
   },
   actionButtonsRow: {
     flexDirection: 'row',
@@ -392,23 +609,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginVertical: Spacing.two,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: Spacing.five,
-    gap: Spacing.two,
-  },
-  emptyIcon: {
-    fontSize: 40,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  emptyText: {
-    textAlign: 'center',
-    lineHeight: 22,
-    paddingHorizontal: Spacing.four,
   },
   listFooter: {
     marginTop: Spacing.four,
