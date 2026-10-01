@@ -71,25 +71,6 @@ export async function scanFoodImage(imageUri: string): Promise<FoodRecognitionRe
   const endpoint = API_ENDPOINTS.scan;
   const baseUrl = getApiBaseUrl();
 
-  // Validate local file existence before initiating the upload
-  try {
-    const isContentUri = imageUri.startsWith('content://');
-    if (!isContentUri) {
-      const fileInfo = await FileSystem.getInfoAsync(imageUri);
-      if (!fileInfo.exists) {
-        throw new ScanServiceError(
-          'The selected image file was not found on the device. Please select or capture another photo.',
-          'FILE_NOT_FOUND'
-        );
-      }
-    }
-  } catch (error) {
-    if (error instanceof ScanServiceError) {
-      throw error;
-    }
-    console.warn('[scan-service] FileSystem.getInfoAsync check warning:', error);
-  }
-
   const { mimeType } = getImageMeta(imageUri);
 
   console.log(`[scan-service] Uploading food image to ${endpoint} (MIME: ${mimeType})`);

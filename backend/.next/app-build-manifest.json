@@ -5,10 +5,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/analyze-food/route.js"
     ],
-    "/_not-found/page": [
+    "/api/scans/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/api/scans/route.js"
     ]
   }
 }

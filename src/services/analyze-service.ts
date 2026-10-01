@@ -72,27 +72,15 @@ export async function analyzeFoodImage(
     // Stage 1: Preparing — Local validation
     onProgress?.('preparing');
 
-    // On Android, content:// URIs can return false from getInfoAsync.
-    // Skip existence check for content:// URIs and assume they are valid.
-    const isContentUri = imageUri.startsWith('content://');
-    if (!isContentUri) {
-      const fileInfo = await FileSystem.getInfoAsync(imageUri);
-      if (!fileInfo.exists) {
-        throw new AnalyzeServiceError(
-          'The selected image file no longer exists. Please try selecting another photo.',
-          'FILE_NOT_FOUND'
-        );
-      }
-    }
-
-    // Infer MIME type securely
-    const { mimeType } = getImageMeta(imageUri);
-    if (!mimeType) {
+    if (!imageUri || typeof imageUri !== 'string' || imageUri.trim() === '') {
       throw new AnalyzeServiceError(
-        'Unsupported image format. Please use JPEG, PNG, WebP, or HEIC.',
-        'INVALID_FORMAT'
+        'No image was provided for analysis.',
+        'MISSING_IMAGE_URI'
       );
     }
+
+    // Infer MIME type securely (defaults to image/jpeg if unknown)
+    const { mimeType } = getImageMeta(imageUri);
 
     // Stage 2: Analyzing — Upload image and wait for AI recognition
     onProgress?.('analyzing');
