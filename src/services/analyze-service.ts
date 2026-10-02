@@ -26,7 +26,7 @@
  */
 
 import { Platform } from 'react-native';
-import { File, UploadType } from 'expo-file-system';
+import { File, UploadType, Paths } from 'expo-file-system';
 import { API_ENDPOINTS } from '@/constants/api';
 import type {
   FoodAnalysisResult,
@@ -52,6 +52,21 @@ export class AnalyzeServiceError extends Error {
 export type AnalysisProgressCallback = (stage: AnalysisLoadingStage) => void;
 
 /**
+ * Normalizes Android local file URIs for Expo Go experience directory paths.
+ * On Android ext4 filesystems, experience directories contain literal `%40` and `%2F`.
+ * Native Java URI.create() unescapes `%2F` into `/`, causing "File does not exist" errors
+ * unless percent signs are escaped (`%` -> `%25`).
+ */
+function normalizeFileUri(uri: string): string {
+  if (Platform.OS === 'android' && uri.startsWith('file://')) {
+    if (uri.includes('%') && !uri.includes('%25')) {
+      return uri.replace(/%/g, '%25');
+    }
+  }
+  return uri;
+}
+
+/**
  * Analyze a food image and retrieve full nutrition data + highlights.
  *
  * STAGES:
@@ -69,6 +84,8 @@ export async function analyzeFoodImage(
   imageUri: string,
   onProgress?: AnalysisProgressCallback
 ): Promise<FoodAnalysisResult> {
+  let tempUploadFile: File | null = null;
+
   try {
     // Stage 1: Preparing — Local validation
     onProgress?.('preparing');
@@ -80,22 +97,24 @@ export async function analyzeFoodImage(
       );
     }
 
-    console.log(`[analyze-service] [1/5] Initialization. Original URI: ${imageUri}`);
+    const normalizedUri = normalizeFileUri(imageUri);
+    const sourceFile = new File(normalizedUri);
+    const { fileName, mimeType } = getImageMeta(imageUri);
 
-    // Create a modern Expo File instance representing the local asset
-    const file = new File(imageUri);
+    console.log(`[analyze-service] [1/5] Image URI: ${imageUri} (Normalized: ${normalizedUri})`);
+    console.log(`[analyze-service] [2/5] File details: Name=${fileName}, Exists=${sourceFile.exists}, Size=${sourceFile.size}B, MIME=${mimeType}`);
 
-    // Infer MIME type securely (defaults to image/jpeg if unknown)
-    const { mimeType } = getImageMeta(imageUri);
-
-    console.log(`[analyze-service] [2/5] File details from URI: Name is ${file.name}, MIME: ${mimeType}`);
+    // Create a temporary copy in application cache directory to guarantee readable permissions in Expo Go
+    const tempFileName = `upload_${Date.now()}_${fileName}`;
+    tempUploadFile = new File(Paths.cache, tempFileName);
+    await sourceFile.copy(tempUploadFile, { overwrite: true });
 
     // Stage 2: Analyzing — Upload image and wait for AI recognition
     onProgress?.('analyzing');
 
     console.log(`[analyze-service] [3/5] Starting native upload to: ${API_ENDPOINTS.analyzeFood}`);
 
-    const uploadResult = await file.upload(API_ENDPOINTS.analyzeFood, {
+    const uploadResult = await tempUploadFile.upload(API_ENDPOINTS.analyzeFood, {
       httpMethod: 'POST',
       uploadType: UploadType.MULTIPART,
       fieldName: 'image',
@@ -183,6 +202,14 @@ export async function analyzeFoodImage(
       'UNKNOWN_ERROR',
       error
     );
+  } finally {
+    if (tempUploadFile && tempUploadFile.exists) {
+      try {
+        tempUploadFile.delete();
+      } catch (cleanupError) {
+        console.warn('[analyze-service] Failed to clean up temp upload file:', cleanupError);
+      }
+    }
   }
 }
 

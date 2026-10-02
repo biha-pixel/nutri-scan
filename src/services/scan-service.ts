@@ -13,7 +13,7 @@
  */
 
 import { Platform } from 'react-native';
-import { File, UploadType } from 'expo-file-system';
+import { File, UploadType, Paths } from 'expo-file-system';
 
 import { API_ENDPOINTS, getApiBaseUrl } from '@/constants/api';
 import type { FoodRecognitionResult, ScanApiResponse } from '@/types/food';
@@ -26,6 +26,21 @@ export class ScanServiceError extends Error {
     this.name = 'ScanServiceError';
     this.code = code;
   }
+}
+
+/**
+ * Normalizes Android local file URIs for Expo Go experience directory paths.
+ * On Android ext4 filesystems, experience directories contain literal `%40` and `%2F`.
+ * Native Java URI.create() unescapes `%2F` into `/`, causing "File does not exist" errors
+ * unless percent signs are escaped (`%` -> `%25`).
+ */
+function normalizeFileUri(uri: string): string {
+  if (Platform.OS === 'android' && uri.startsWith('file://')) {
+    if (uri.includes('%') && !uri.includes('%25')) {
+      return uri.replace(/%/g, '%25');
+    }
+  }
+  return uri;
 }
 
 /**
@@ -72,18 +87,23 @@ export async function scanFoodImage(imageUri: string): Promise<FoodRecognitionRe
   const endpoint = API_ENDPOINTS.scan;
   const baseUrl = getApiBaseUrl();
 
-  console.log(`[scan-service] [1/5] Initialization. Original URI: ${imageUri}`);
+  const normalizedUri = normalizeFileUri(imageUri);
+  const sourceFile = new File(normalizedUri);
+  const { fileName, mimeType } = getImageMeta(imageUri);
 
-  // Create a modern Expo File instance representing the local asset
-  const file = new File(imageUri);
+  console.log(`[scan-service] [1/5] Image URI: ${imageUri} (Normalized: ${normalizedUri})`);
+  console.log(`[scan-service] [2/5] File details: Name=${fileName}, Exists=${sourceFile.exists}, Size=${sourceFile.size}B, MIME=${mimeType}`);
 
-  const { mimeType } = getImageMeta(imageUri);
-
-  console.log(`[scan-service] [2/5] File details from URI: Name is ${file.name}, MIME: ${mimeType}`);
-  console.log(`[scan-service] [3/5] Starting native upload to: ${endpoint}`);
+  let tempUploadFile: File | null = null;
 
   try {
-    const uploadResult = await file.upload(endpoint, {
+    const tempFileName = `upload_${Date.now()}_${fileName}`;
+    tempUploadFile = new File(Paths.cache, tempFileName);
+    await sourceFile.copy(tempUploadFile, { overwrite: true });
+
+    console.log(`[scan-service] [3/5] Starting native upload to: ${endpoint}`);
+
+    const uploadResult = await tempUploadFile.upload(endpoint, {
       httpMethod: 'POST',
       uploadType: UploadType.MULTIPART,
       fieldName: 'image',
@@ -130,5 +150,13 @@ export async function scanFoodImage(imageUri: string): Promise<FoodRecognitionRe
       `Details: ${rawMessage}`,
       'NETWORK_ERROR'
     );
+  } finally {
+    if (tempUploadFile && tempUploadFile.exists) {
+      try {
+        tempUploadFile.delete();
+      } catch (cleanupError) {
+        console.warn('[scan-service] Failed to clean up temp upload file:', cleanupError);
+      }
+    }
   }
 }
