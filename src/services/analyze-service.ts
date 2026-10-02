@@ -26,7 +26,7 @@
  */
 
 import { Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
+import { File, UploadType } from 'expo-file-system';
 import { API_ENDPOINTS } from '@/constants/api';
 import type {
   FoodAnalysisResult,
@@ -80,26 +80,34 @@ export async function analyzeFoodImage(
       );
     }
 
-    // Fix URL-encoded characters in Expo Go Android cache paths (e.g. %40 -> @, %2F -> /)
-    const normalizedUri =
-      Platform.OS === 'android'
-        ? imageUri.replace(/%40/g, '@').replace(/%2F/g, '/')
-        : imageUri;
+    console.log(`[analyze-service] [1/5] Initialization. Original URI: ${imageUri}`);
+
+    // Create a modern Expo File instance representing the local asset
+    const file = new File(imageUri);
 
     // Infer MIME type securely (defaults to image/jpeg if unknown)
-    const { mimeType } = getImageMeta(normalizedUri);
+    const { mimeType } = getImageMeta(imageUri);
+
+    console.log(`[analyze-service] [2/5] File details from URI: Name is ${file.name}, MIME: ${mimeType}`);
 
     // Stage 2: Analyzing — Upload image and wait for AI recognition
     onProgress?.('analyzing');
 
-    const uploadResult = await FileSystem.uploadAsync(API_ENDPOINTS.analyzeFood, normalizedUri, {
+    console.log(`[analyze-service] [3/5] Starting native upload to: ${API_ENDPOINTS.analyzeFood}`);
+
+    const uploadResult = await file.upload(API_ENDPOINTS.analyzeFood, {
       httpMethod: 'POST',
-      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      uploadType: UploadType.MULTIPART,
       fieldName: 'image',
       mimeType,
+      headers: {
+        Accept: 'application/json',
+      },
     });
 
-    if (uploadResult.status !== 200) {
+    console.log(`[analyze-service] [4/5] Upload completed with HTTP status: ${uploadResult.status}`);
+
+    if (uploadResult.status < 200 || uploadResult.status >= 300) {
       throw new AnalyzeServiceError(
         `Server returned status ${uploadResult.status}. Please try again.`,
         'HTTP_ERROR',
@@ -116,6 +124,8 @@ export async function analyzeFoodImage(
 
     // Parse and validate response
     const responseData: AnalyzeFoodApiResponse = JSON.parse(uploadResult.body);
+
+    console.log(`[analyze-service] [5/5] Backend parsed response success: ${responseData.success}`);
 
     if (!responseData.success) {
       throw new AnalyzeServiceError(
