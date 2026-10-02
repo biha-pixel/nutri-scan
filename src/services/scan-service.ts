@@ -13,7 +13,7 @@
  */
 
 import { Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
+import { File, UploadType } from 'expo-file-system';
 
 import { API_ENDPOINTS, getApiBaseUrl } from '@/constants/api';
 import type { FoodRecognitionResult, ScanApiResponse } from '@/types/food';
@@ -72,20 +72,20 @@ export async function scanFoodImage(imageUri: string): Promise<FoodRecognitionRe
   const endpoint = API_ENDPOINTS.scan;
   const baseUrl = getApiBaseUrl();
 
-  // Fix URL-encoded characters in Expo Go Android cache paths (e.g. %40 -> @, %2F -> /)
-  const normalizedUri =
-    Platform.OS === 'android'
-      ? imageUri.replace(/%40/g, '@').replace(/%2F/g, '/')
-      : imageUri;
+  console.log(`[scan-service] [1/5] Initialization. Original URI: ${imageUri}`);
 
-  const { mimeType } = getImageMeta(normalizedUri);
+  // Create a modern Expo File instance representing the local asset
+  const file = new File(imageUri);
 
-  console.log(`[scan-service] Uploading food image to ${endpoint} (MIME: ${mimeType})`);
+  const { mimeType } = getImageMeta(imageUri);
+
+  console.log(`[scan-service] [2/5] File details from URI: Name is ${file.name}, MIME: ${mimeType}`);
+  console.log(`[scan-service] [3/5] Starting native upload to: ${endpoint}`);
 
   try {
-    const uploadResult = await FileSystem.uploadAsync(endpoint, normalizedUri, {
+    const uploadResult = await file.upload(endpoint, {
       httpMethod: 'POST',
-      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      uploadType: UploadType.MULTIPART,
       fieldName: 'image',
       mimeType,
       headers: {
@@ -93,7 +93,7 @@ export async function scanFoodImage(imageUri: string): Promise<FoodRecognitionRe
       },
     });
 
-    console.log(`[scan-service] Backend responded with HTTP status ${uploadResult.status}`);
+    console.log(`[scan-service] [4/5] Upload completed with HTTP status: ${uploadResult.status}`);
 
     let data: ScanApiResponse;
     try {
@@ -104,6 +104,8 @@ export async function scanFoodImage(imageUri: string): Promise<FoodRecognitionRe
         'INVALID_RESPONSE'
       );
     }
+
+    console.log(`[scan-service] [5/5] Backend parsed response success: ${data.success}`);
 
     if (uploadResult.status < 200 || uploadResult.status >= 300 || !data.success) {
       const errorMessage =
