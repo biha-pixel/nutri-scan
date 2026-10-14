@@ -20,7 +20,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { ImagePermissionError, pickFromGallery, takePhoto } from '@/services/image-service';
+import { ImagePermissionError, pickFromGallery } from '@/services/image-service';
 import type { CapturedImage } from '@/types/image';
 
 type ScanScreenState =
@@ -36,21 +36,9 @@ export default function ScanScreen() {
 
   const [state, setState] = useState<ScanScreenState>({ kind: 'idle' });
 
-  async function handleTakePhoto(): Promise<void> {
-    setState({ kind: 'loading' });
-
-    try {
-      const image = await takePhoto();
-
-      if (image === null) {
-        setState({ kind: 'idle' });
-        return;
-      }
-
-      setState({ kind: 'preview', image });
-    } catch (error) {
-      handleImageError(error);
-    }
+  function handleTakePhoto(): void {
+    // Navigate to dedicated capture screen
+    router.push('/capture' as any);
   }
 
   async function handlePickFromGallery(): Promise<void> {
@@ -97,6 +85,10 @@ export default function ScanScreen() {
     });
   }
 
+  function handleMeasureFood(): void {
+    router.push('/(tabs)/measurement-camera' as any);
+  }
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -104,11 +96,11 @@ export default function ScanScreen() {
           Scan Food
         </ThemedText>
 
-        {/* IDLE — Show the two action buttons */}
+        {/* IDLE — Show the three action buttons */}
         {state.kind === 'idle' && (
           <ThemedView style={styles.content}>
             <ThemedText style={styles.instructions} themeColor="textSecondary">
-              Take a photo of your food or choose one from your gallery.
+              Take a photo of your food, choose from your gallery, or use the measurement camera.
             </ThemedText>
 
             <Pressable
@@ -135,6 +127,19 @@ export default function ScanScreen() {
               accessibilityLabel="Choose a food photo from gallery"
             >
               <ThemedText themeColor="textSecondary">🖼️  Choose from Gallery</ThemedText>
+            </Pressable>
+
+            <Pressable
+              onPress={handleMeasureFood}
+              style={({ pressed }) => [
+                styles.actionButton,
+                { borderColor: theme.textSecondary },
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Measure food with camera"
+            >
+              <ThemedText themeColor="textSecondary">📏  Measure Food</ThemedText>
             </Pressable>
           </ThemedView>
         )}
@@ -164,7 +169,7 @@ export default function ScanScreen() {
               permissionType={state.permissionType}
               canAskAgain={state.canAskAgain}
               onRetry={
-                state.permissionType === 'camera' ? handleTakePhoto : handlePickFromGallery
+                state.permissionType === 'gallery' ? handlePickFromGallery : () => {}
               }
             />
           </ThemedView>

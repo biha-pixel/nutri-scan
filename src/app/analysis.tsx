@@ -96,7 +96,10 @@ const ERROR_CONFIG: Record<
 export default function AnalysisScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { imageUri } = useLocalSearchParams<{ imageUri: string }>();
+  const { imageUri, captureMetadata } = useLocalSearchParams<{
+    imageUri: string;
+    captureMetadata?: string;
+  }>();
 
   const { user, session } = useAuth();
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -138,7 +141,7 @@ export default function AnalysisScreen() {
     try {
       const result = await analyzeFoodImage(imageUri, (stage) => {
         setState({ kind: 'loading', stage });
-      });
+      }, captureMetadata);
 
       // Handle empty results (no food detected)
       if (result.items.length === 0 || result.imageQuality === 'unrecognizable') {
