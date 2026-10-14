@@ -97,6 +97,53 @@ export async function analyzeFoodImage(
       );
     }
 
+    if (Platform.OS === 'web') {
+      const { fileName, mimeType } = getImageMeta(imageUri);
+      console.log(`[analyze-service] [1/5] Image URI: ${imageUri} (Web)`);
+
+      const blobResponse = await fetch(imageUri);
+      const blob = await blobResponse.blob();
+
+      const formData = new FormData();
+      const fileBlob = blob.type ? blob : new Blob([blob], { type: mimeType });
+      formData.append('image', fileBlob, fileName);
+
+      console.log(`[analyze-service] [3/5] Starting web upload to: ${API_ENDPOINTS.analyzeFood}`);
+      onProgress?.('analyzing');
+
+      const uploadResult = await fetch(API_ENDPOINTS.analyzeFood, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        body: formData,
+      });
+
+      console.log(`[analyze-service] [4/5] Upload completed with HTTP status: ${uploadResult.status}`);
+
+      if (!uploadResult.ok) {
+        const errorText = await uploadResult.text().catch(() => '');
+        throw new AnalyzeServiceError(
+          `Server returned status ${uploadResult.status}. Please try again.`,
+          'HTTP_ERROR',
+          { status: uploadResult.status, body: errorText }
+        );
+      }
+
+      onProgress?.('nutrition');
+      onProgress?.('finalizing');
+
+      const responseData: AnalyzeFoodApiResponse = await uploadResult.json();
+      console.log(`[analyze-service] [5/5] Backend parsed response success: ${responseData.success}`);
+
+      if (!responseData.success) {
+        throw new AnalyzeServiceError(
+          responseData.error.message,
+          responseData.error.code,
+          responseData.error
+        );
+      }
+      return responseData.data;
+    }
+
     const normalizedUri = normalizeFileUri(imageUri);
     const sourceFile = new File(normalizedUri);
     const { fileName, mimeType } = getImageMeta(imageUri);
