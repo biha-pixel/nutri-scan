@@ -85,10 +85,6 @@ export default function ScanScreen() {
     });
   }
 
-  function handleMeasureFood(): void {
-    router.push('/(tabs)/measurement-camera' as any);
-  }
-
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -96,11 +92,11 @@ export default function ScanScreen() {
           Scan Food
         </ThemedText>
 
-        {/* IDLE — Show the three action buttons */}
+        {/* IDLE — Show the two action buttons */}
         {state.kind === 'idle' && (
           <ThemedView style={styles.content}>
             <ThemedText style={styles.instructions} themeColor="textSecondary">
-              Take a photo of your food, choose from your gallery, or use the measurement camera.
+              Take a photo of your food or choose from your gallery, then analyze it for nutrition data.
             </ThemedText>
 
             <Pressable
@@ -127,19 +123,6 @@ export default function ScanScreen() {
               accessibilityLabel="Choose a food photo from gallery"
             >
               <ThemedText themeColor="textSecondary">🖼️  Choose from Gallery</ThemedText>
-            </Pressable>
-
-            <Pressable
-              onPress={handleMeasureFood}
-              style={({ pressed }) => [
-                styles.actionButton,
-                { borderColor: theme.textSecondary },
-                pressed && styles.pressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Measure food with camera"
-            >
-              <ThemedText themeColor="textSecondary">📏  Measure Food</ThemedText>
             </Pressable>
           </ThemedView>
         )}
