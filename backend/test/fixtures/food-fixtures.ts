@@ -266,3 +266,127 @@ export const malformedUploadFixtures = {
     expectedError: "Image too large",
   },
 };
+
+// ─── 9. Calibrated Marker Detected Fixture (Step 3 Testing) ──────────
+/**
+ * Scenario: Calibration enabled, marker successfully detected with high confidence.
+ * This fixture represents the ideal case where a reference marker (credit card) is visible
+ * and passes all validation checks: confidence ≥ 0.5, size ≥ 20px, aspect ratio within tolerance.
+ */
+export const calibratedMarkerDetectedFixture = {
+  description: "Marker detected with high confidence — calibration will succeed",
+  visionResult: {
+    items: [
+      {
+        name: "banana",
+        canonicalName: "Banana, raw",
+        confidence: 0.94,
+        description: "Ripe yellow banana, medium size",
+        estimatedPortion: "1 medium (118g)",
+        foodGeometryCategory: "discrete_unit",
+        sizeTier: "medium",
+        itemCount: 1,
+        box2d: [100, 150, 400, 350],
+      },
+    ],
+    imageQuality: "good",
+    message: "Food detected with visible reference marker.",
+    detectedMarker: {
+      markerType: "credit_card",
+      confidence: 0.87,
+      box2d: [50, 50, 150, 300], // ~100px × ~250px (valid size)
+    },
+  } satisfies FoodRecognitionResult,
+};
+
+// ─── 10. Uncalibrated Marker Not Detected Fixture ───────────────────
+/**
+ * Scenario: Calibration enabled but no marker detected.
+ * Food is recognized and geometry is populated, but calibrationContext will return
+ * validationStatus: "no_marker_detected". Mass estimation falls back to visual or standard portion.
+ */
+export const uncalibratedMarkerNotDetectedFixture = {
+  description: "Food detected but no marker present — calibration unavailable",
+  visionResult: {
+    items: [
+      {
+        name: "banana",
+        canonicalName: "Banana, raw",
+        confidence: 0.94,
+        description: "Ripe yellow banana, medium size",
+        estimatedPortion: "1 medium (118g)",
+        foodGeometryCategory: "discrete_unit",
+        sizeTier: "medium",
+        itemCount: 1,
+        box2d: [100, 150, 400, 350],
+      },
+    ],
+    imageQuality: "good",
+    message: "Food detected. Reference marker not visible.",
+    detectedMarker: undefined,
+  } satisfies FoodRecognitionResult,
+};
+
+// ─── 11. Marker Too Low Confidence Fixture ─────────────────────────
+/**
+ * Scenario: Marker detected but confidence < 0.5 (rejected by calibration validation).
+ * The reference marker is present but unclear/partially visible, so confidence is below
+ * the threshold. Scale calibration will reject it and report: validationStatus: "confidence_too_low".
+ */
+export const markerLowConfidenceFixture = {
+  description: "Marker detected but confidence < 0.5 — calibration rejected",
+  visionResult: {
+    items: [
+      {
+        name: "banana",
+        canonicalName: "Banana, raw",
+        confidence: 0.94,
+        description: "Ripe yellow banana, medium size",
+        estimatedPortion: "1 medium (118g)",
+        foodGeometryCategory: "discrete_unit",
+        sizeTier: "medium",
+        itemCount: 1,
+        box2d: [100, 150, 400, 350],
+      },
+    ],
+    imageQuality: "good",
+    message: "Food detected. Marker visibility unclear.",
+    detectedMarker: {
+      markerType: "us_quarter",
+      confidence: 0.35, // Below 0.5 threshold
+      box2d: [60, 60, 140, 140],
+    },
+  } satisfies FoodRecognitionResult,
+};
+
+// ─── 12. Marker Too Small Fixture ──────────────────────────────────
+/**
+ * Scenario: Marker detected but size < 20px (rejected by calibration validation).
+ * The reference marker is present but too small in the image, likely due to distance or zoom.
+ * Scale calibration will reject it: validationStatus: "marker_too_small".
+ */
+export const markerTooSmallFixture = {
+  description: "Marker detected but size < 20px — calibration rejected",
+  visionResult: {
+    items: [
+      {
+        name: "banana",
+        canonicalName: "Banana, raw",
+        confidence: 0.94,
+        description: "Ripe yellow banana, medium size",
+        estimatedPortion: "1 medium (118g)",
+        foodGeometryCategory: "discrete_unit",
+        sizeTier: "medium",
+        itemCount: 1,
+        box2d: [100, 150, 400, 350],
+      },
+    ],
+    imageQuality: "good",
+    message: "Food detected. Marker too small to measure accurately.",
+    detectedMarker: {
+      markerType: "us_penny",
+      confidence: 0.72,
+      box2d: [100, 100, 115, 115], // ~15px × ~15px (too small, < 20px)
+    },
+  } satisfies FoodRecognitionResult,
+};

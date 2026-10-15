@@ -87,6 +87,63 @@ export async function scanFoodImage(imageUri: string): Promise<FoodRecognitionRe
   const endpoint = API_ENDPOINTS.scan;
   const baseUrl = getApiBaseUrl();
 
+  if (Platform.OS === 'web') {
+    const { fileName, mimeType } = getImageMeta(imageUri);
+    console.log(`[scan-service] [1/5] Image URI: ${imageUri} (Web)`);
+
+    try {
+      const blobResponse = await fetch(imageUri);
+      const blob = await blobResponse.blob();
+
+      const formData = new FormData();
+      const fileBlob = blob.type ? blob : new Blob([blob], { type: mimeType });
+      formData.append('image', fileBlob, fileName);
+
+      console.log(`[scan-service] [3/5] Starting web upload to: ${endpoint}`);
+
+      const uploadResult = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        body: formData,
+      });
+
+      console.log(`[scan-service] [4/5] Upload completed with HTTP status: ${uploadResult.status}`);
+
+      let data: ScanApiResponse;
+      try {
+        data = await uploadResult.json();
+      } catch {
+        throw new ScanServiceError(
+          `Server returned an invalid response (HTTP ${uploadResult.status}).`,
+          'INVALID_RESPONSE'
+        );
+      }
+
+      console.log(`[scan-service] [5/5] Backend parsed response success: ${data.success}`);
+
+      if (!uploadResult.ok || !data.success) {
+        const errorMessage =
+          (!data.success && data.error?.message) ||
+          `Server error occurred (HTTP ${uploadResult.status}).`;
+        const errorCode = (!data.success && data.error?.code) || 'SERVER_ERROR';
+        throw new ScanServiceError(errorMessage, errorCode);
+      }
+
+      return data.data;
+    } catch (error) {
+      if (error instanceof ScanServiceError) {
+        throw error;
+      }
+      const rawMessage = error instanceof Error ? error.message : 'Unknown network failure';
+      console.error('[scan-service] Upload failed:', error);
+      throw new ScanServiceError(
+        `Could not connect to NutriScan backend at ${baseUrl}.\n\n` +
+        `Details: ${rawMessage}`,
+        'NETWORK_ERROR'
+      );
+    }
+  }
+
   const normalizedUri = normalizeFileUri(imageUri);
   const sourceFile = new File(normalizedUri);
   const { fileName, mimeType } = getImageMeta(imageUri);

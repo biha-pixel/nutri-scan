@@ -23,6 +23,7 @@ import type {
   SavedScanApiResponse,
   ScanHistoryApiResponse,
   ScanHistoryData,
+  NutritionData,
 } from '@/types/food';
 
 export class HistoryServiceError extends Error {
@@ -214,29 +215,95 @@ export async function deleteScanRecord(id: string, token?: string | null): Promi
 
 /**
  * Utility helper to convert a FoodAnalysisResult into a CreateScanPayload ready for backend saving.
+ * Optionally applies user-adjusted portion sizes to scale nutrition values before saving.
  */
 export function formatAnalysisResultForSave(
   result: FoodAnalysisResult,
   userId?: string | null,
-  imageUrl?: string | null
+  imageUrl?: string | null,
+  adjustedPortions?: { [itemIndex: number]: number }
 ): CreateScanPayload {
+  // Helper function to scale nutrition to adjusted portion size
+  const scaleNutritionForPortions = (nutrition: NutritionData, targetGrams: number) => {
+    const baseSizeGrams = nutrition.servingSize || 100;
+    const scaleFactor = targetGrams / baseSizeGrams;
+
+    return {
+      ...nutrition,
+      servingSize: targetGrams,
+      calories: nutrition.calories ? Math.round(nutrition.calories * scaleFactor) : null,
+      macronutrients: {
+        protein: nutrition.macronutrients.protein
+          ? Math.round(nutrition.macronutrients.protein * scaleFactor * 10) / 10
+          : null,
+        totalFat: nutrition.macronutrients.totalFat
+          ? Math.round(nutrition.macronutrients.totalFat * scaleFactor * 10) / 10
+          : null,
+        saturatedFat: nutrition.macronutrients.saturatedFat
+          ? Math.round(nutrition.macronutrients.saturatedFat * scaleFactor * 10) / 10
+          : null,
+        carbohydrates: nutrition.macronutrients.carbohydrates
+          ? Math.round(nutrition.macronutrients.carbohydrates * scaleFactor * 10) / 10
+          : null,
+        fiber: nutrition.macronutrients.fiber
+          ? Math.round(nutrition.macronutrients.fiber * scaleFactor * 10) / 10
+          : null,
+        sugar: nutrition.macronutrients.sugar
+          ? Math.round(nutrition.macronutrients.sugar * scaleFactor * 10) / 10
+          : null,
+      },
+      micronutrients: {
+        sodium: nutrition.micronutrients.sodium
+          ? Math.round(nutrition.micronutrients.sodium * scaleFactor * 10) / 10
+          : null,
+        cholesterol: nutrition.micronutrients.cholesterol
+          ? Math.round(nutrition.micronutrients.cholesterol * scaleFactor * 10) / 10
+          : null,
+        potassium: nutrition.micronutrients.potassium
+          ? Math.round(nutrition.micronutrients.potassium * scaleFactor * 10) / 10
+          : null,
+        vitaminA: nutrition.micronutrients.vitaminA
+          ? Math.round(nutrition.micronutrients.vitaminA * scaleFactor * 10) / 10
+          : null,
+        vitaminC: nutrition.micronutrients.vitaminC
+          ? Math.round(nutrition.micronutrients.vitaminC * scaleFactor * 10) / 10
+          : null,
+        calcium: nutrition.micronutrients.calcium
+          ? Math.round(nutrition.micronutrients.calcium * scaleFactor * 10) / 10
+          : null,
+        iron: nutrition.micronutrients.iron
+          ? Math.round(nutrition.micronutrients.iron * scaleFactor * 10) / 10
+          : null,
+      },
+    };
+  };
+
   return {
     userId: userId || null,
     imageUrl: imageUrl || null,
-    items: result.items.map((item) => ({
-      foodName: item.name,
-      confidence: item.confidence,
-      nutritionSource: item.nutrition?.source ?? 'usda_fdc',
-      nutritionId: item.nutrition?.sourceId ?? null,
-      servingBasis:
-        item.estimatedPortion ||
-        (item.nutrition ? `${item.nutrition.servingSize}${item.nutrition.servingUnit}` : '100g'),
-      nutrients: {
-        calories: item.nutrition?.calories ?? null,
-        macronutrients: item.nutrition?.macronutrients,
-        micronutrients: item.nutrition?.micronutrients,
-      },
-      highlights: item.highlights ?? [],
-    })),
+    items: result.items.map((item, itemIndex) => {
+      // Check if user adjusted this item's portion
+      const adjustedGrams = adjustedPortions?.[itemIndex];
+      const nutritionToSave = adjustedGrams && item.nutrition
+        ? scaleNutritionForPortions(item.nutrition, adjustedGrams)
+        : item.nutrition;
+
+      return {
+        foodName: item.name,
+        confidence: item.confidence,
+        nutritionSource: nutritionToSave?.source ?? 'usda_fdc',
+        nutritionId: nutritionToSave?.sourceId ?? null,
+        servingBasis:
+          adjustedGrams ? `${adjustedGrams}g (user-adjusted)` :
+          item.estimatedPortion ||
+          (nutritionToSave ? `${nutritionToSave.servingSize}${nutritionToSave.servingUnit}` : '100g'),
+        nutrients: {
+          calories: nutritionToSave?.calories ?? null,
+          macronutrients: nutritionToSave?.macronutrients,
+          micronutrients: nutritionToSave?.micronutrients,
+        },
+        highlights: item.highlights ?? [],
+      };
+    }),
   };
 }

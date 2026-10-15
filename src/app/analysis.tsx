@@ -96,10 +96,14 @@ const ERROR_CONFIG: Record<
 export default function AnalysisScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { imageUri } = useLocalSearchParams<{ imageUri: string }>();
+  const { imageUri, captureMetadata } = useLocalSearchParams<{
+    imageUri: string;
+    captureMetadata?: string;
+  }>();
 
   const { user, session } = useAuth();
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [adjustedPortions, setAdjustedPortions] = useState<{ [itemIndex: number]: number }>({});
 
   const [state, setState] = useState<AnalysisState>({
     kind: 'loading',
@@ -111,7 +115,7 @@ export default function AnalysisScreen() {
     if (state.kind === 'success' && user && session?.access_token && saveStatus === 'idle') {
       setSaveStatus('saving');
 
-      const payload = formatAnalysisResultForSave(state.data, user.id);
+      const payload = formatAnalysisResultForSave(state.data, user.id, undefined, adjustedPortions);
 
       saveScanRecord(payload, session.access_token)
         .then(() => setSaveStatus('saved'))
@@ -120,7 +124,7 @@ export default function AnalysisScreen() {
           setSaveStatus('error');
         });
     }
-  }, [state, user, session, saveStatus]);
+  }, [state, user, session, saveStatus, adjustedPortions]);
 
   const performAnalysis = useCallback(async () => {
     if (!imageUri) {
@@ -138,7 +142,7 @@ export default function AnalysisScreen() {
     try {
       const result = await analyzeFoodImage(imageUri, (stage) => {
         setState({ kind: 'loading', stage });
-      });
+      }, captureMetadata);
 
       // Handle empty results (no food detected)
       if (result.items.length === 0 || result.imageQuality === 'unrecognizable') {
@@ -345,8 +349,15 @@ export default function AnalysisScreen() {
           <FlatList
             data={state.data.items}
             keyExtractor={(item, index) => `${item.canonicalName}-${index}`}
-            renderItem={({ item }: { item: AnalyzedFoodItem }) => (
-              <FoodItemCard item={item} />
+            renderItem={({ item, index }: { item: AnalyzedFoodItem; index?: number }) => (
+              <FoodItemCard
+                item={item}
+                onPortionChange={(grams) => {
+                  if (index !== undefined) {
+                    setAdjustedPortions(prev => ({ ...prev, [index]: grams }));
+                  }
+                }}
+              />
             )}
             contentContainerStyle={styles.listContent}
             ListHeaderComponent={
@@ -407,6 +418,45 @@ export default function AnalysisScreen() {
                     <ThemedText style={styles.messageText} themeColor="textSecondary">
                       ℹ️ {state.data.message}
                     </ThemedText>
+                  </ThemedView>
+                ) : null}
+
+                {/* Calibration Status Banner (Step 3) */}
+                {state.data.calibration ? (
+                  <ThemedView
+                    type="backgroundElement"
+                    style={[
+                      styles.calibrationBanner,
+                      {
+                        borderLeftColor:
+                          state.data.calibration.success ? '#34C759' : '#FF9500',
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.calibrationBannerText,
+                        {
+                          color: state.data.calibration.success ? '#34C759' : '#FF9500',
+                        },
+                      ]}
+                    >
+                      {state.data.calibration.success
+                        ? `📐 Calibrated${
+                            state.data.calibration.detectedMarker
+                              ? ` (${state.data.calibration.detectedMarker.markerType})`
+                              : ''
+                          }`
+                        : `⚠️ ${state.data.calibration.validationStatus || 'Calibration unavailable'}`}
+                    </ThemedText>
+                    {state.data.calibration.statusMessage ? (
+                      <ThemedText
+                        style={styles.calibrationStatusMessage}
+                        themeColor="textSecondary"
+                      >
+                        {state.data.calibration.statusMessage}
+                      </ThemedText>
+                    ) : null}
                   </ThemedView>
                 ) : null}
 
@@ -604,6 +654,22 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  calibrationBanner: {
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+    marginBottom: Spacing.three,
+    borderLeftWidth: 4,
+  },
+  calibrationBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  calibrationStatusMessage: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: Spacing.one,
   },
   sectionTitle: {
     fontSize: 16,

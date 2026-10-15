@@ -20,7 +20,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { ImagePermissionError, pickFromGallery, takePhoto } from '@/services/image-service';
+import { ImagePermissionError, pickFromGallery } from '@/services/image-service';
 import type { CapturedImage } from '@/types/image';
 
 type ScanScreenState =
@@ -36,21 +36,9 @@ export default function ScanScreen() {
 
   const [state, setState] = useState<ScanScreenState>({ kind: 'idle' });
 
-  async function handleTakePhoto(): Promise<void> {
-    setState({ kind: 'loading' });
-
-    try {
-      const image = await takePhoto();
-
-      if (image === null) {
-        setState({ kind: 'idle' });
-        return;
-      }
-
-      setState({ kind: 'preview', image });
-    } catch (error) {
-      handleImageError(error);
-    }
+  function handleTakePhoto(): void {
+    // Navigate to dedicated capture screen
+    router.push('/capture' as any);
   }
 
   async function handlePickFromGallery(): Promise<void> {
@@ -108,7 +96,7 @@ export default function ScanScreen() {
         {state.kind === 'idle' && (
           <ThemedView style={styles.content}>
             <ThemedText style={styles.instructions} themeColor="textSecondary">
-              Take a photo of your food or choose one from your gallery.
+              Take a photo of your food or choose from your gallery, then analyze it for nutrition data.
             </ThemedText>
 
             <Pressable
@@ -164,7 +152,7 @@ export default function ScanScreen() {
               permissionType={state.permissionType}
               canAskAgain={state.canAskAgain}
               onRetry={
-                state.permissionType === 'camera' ? handleTakePhoto : handlePickFromGallery
+                state.permissionType === 'gallery' ? handlePickFromGallery : () => {}
               }
             />
           </ThemedView>

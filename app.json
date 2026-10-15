@@ -26,7 +26,7 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -44,6 +44,13 @@
         {
           "photosPermission": "NutriScan needs photo library access to select food photos for nutritional analysis.",
           "cameraPermission": "NutriScan needs camera access to photograph food for nutritional analysis."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "NutriScan uses the camera to photograph your meals.",
+          "recordAudioAndroid": false
         }
       ]
     ],

@@ -82,7 +82,8 @@ function normalizeFileUri(uri: string): string {
  */
 export async function analyzeFoodImage(
   imageUri: string,
-  onProgress?: AnalysisProgressCallback
+  onProgress?: AnalysisProgressCallback,
+  captureMetadataJson?: string
 ): Promise<FoodAnalysisResult> {
   let tempUploadFile: File | null = null;
 
@@ -95,6 +96,58 @@ export async function analyzeFoodImage(
         'No image was provided for analysis.',
         'MISSING_IMAGE_URI'
       );
+    }
+
+    if (Platform.OS === 'web') {
+      const { fileName, mimeType } = getImageMeta(imageUri);
+      console.log(`[analyze-service] [1/5] Image URI: ${imageUri} (Web)`);
+
+      const blobResponse = await fetch(imageUri);
+      const blob = await blobResponse.blob();
+
+      const formData = new FormData();
+      const fileBlob = blob.type ? blob : new Blob([blob], { type: mimeType });
+      formData.append('image', fileBlob, fileName);
+
+      // Append optional capture metadata to FormData
+      if (captureMetadataJson && captureMetadataJson.trim() !== '') {
+        formData.append('captureMetadata', captureMetadataJson);
+      }
+
+      console.log(`[analyze-service] [3/5] Starting web upload to: ${API_ENDPOINTS.analyzeFood}`);
+      onProgress?.('analyzing');
+
+      const uploadResult = await fetch(API_ENDPOINTS.analyzeFood, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        body: formData,
+      });
+
+      console.log(`[analyze-service] [4/5] Upload completed with HTTP status: ${uploadResult.status}`);
+
+      if (!uploadResult.ok) {
+        const errorText = await uploadResult.text().catch(() => '');
+        throw new AnalyzeServiceError(
+          `Server returned status ${uploadResult.status}. Please try again.`,
+          'HTTP_ERROR',
+          { status: uploadResult.status, body: errorText }
+        );
+      }
+
+      onProgress?.('nutrition');
+      onProgress?.('finalizing');
+
+      const responseData: AnalyzeFoodApiResponse = await uploadResult.json();
+      console.log(`[analyze-service] [5/5] Backend parsed response success: ${responseData.success}`);
+
+      if (!responseData.success) {
+        throw new AnalyzeServiceError(
+          responseData.error.message,
+          responseData.error.code,
+          responseData.error
+        );
+      }
+      return responseData.data;
     }
 
     const normalizedUri = normalizeFileUri(imageUri);
@@ -114,14 +167,23 @@ export async function analyzeFoodImage(
 
     console.log(`[analyze-service] [3/5] Starting native upload to: ${API_ENDPOINTS.analyzeFood}`);
 
+    const uploadHeaders: Record<string, string> = {
+      Accept: 'application/json',
+    };
+
+    // Add capture metadata as a custom header for native uploads
+    // (Expo File API doesn't support adding extra form fields to multipart)
+    if (captureMetadataJson && captureMetadataJson.trim() !== '') {
+      // Encode JSON as header value using encodeURIComponent to avoid header parsing issues
+      uploadHeaders['X-Capture-Metadata'] = encodeURIComponent(captureMetadataJson);
+    }
+
     const uploadResult = await tempUploadFile.upload(API_ENDPOINTS.analyzeFood, {
       httpMethod: 'POST',
       uploadType: UploadType.MULTIPART,
       fieldName: 'image',
       mimeType,
-      headers: {
-        Accept: 'application/json',
-      },
+      headers: uploadHeaders,
     });
 
     console.log(`[analyze-service] [4/5] Upload completed with HTTP status: ${uploadResult.status}`);
