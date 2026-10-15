@@ -11,7 +11,7 @@
  * - Nutrition status indicator (found, ambiguous, not_found, error)
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -28,15 +28,81 @@ import type {
   NutritionHighlight,
   Macronutrients,
   Micronutrients,
+  NutritionData,
 } from '@/types/food';
 
 interface FoodItemCardProps {
   item: AnalyzedFoodItem;
 }
 
+/**
+ * Helper: Scale nutrition data to a different portion size
+ * Maintains proportional relationships between all nutrients
+ */
+function scaleNutrition(
+  nutrition: NutritionData,
+  targetGrams: number
+): NutritionData {
+  const baseSizeGrams = nutrition.servingSize || 100;
+  const scaleFactor = targetGrams / baseSizeGrams;
+
+  return {
+    ...nutrition,
+    servingSize: targetGrams,
+    calories: nutrition.calories ? Math.round(nutrition.calories * scaleFactor) : null,
+    macronutrients: {
+      protein: nutrition.macronutrients.protein
+        ? Math.round(nutrition.macronutrients.protein * scaleFactor * 10) / 10
+        : null,
+      totalFat: nutrition.macronutrients.totalFat
+        ? Math.round(nutrition.macronutrients.totalFat * scaleFactor * 10) / 10
+        : null,
+      saturatedFat: nutrition.macronutrients.saturatedFat
+        ? Math.round(nutrition.macronutrients.saturatedFat * scaleFactor * 10) / 10
+        : null,
+      carbohydrates: nutrition.macronutrients.carbohydrates
+        ? Math.round(nutrition.macronutrients.carbohydrates * scaleFactor * 10) / 10
+        : null,
+      fiber: nutrition.macronutrients.fiber
+        ? Math.round(nutrition.macronutrients.fiber * scaleFactor * 10) / 10
+        : null,
+      sugar: nutrition.macronutrients.sugar
+        ? Math.round(nutrition.macronutrients.sugar * scaleFactor * 10) / 10
+        : null,
+    },
+    micronutrients: {
+      sodium: nutrition.micronutrients.sodium
+        ? Math.round(nutrition.micronutrients.sodium * scaleFactor * 10) / 10
+        : null,
+      cholesterol: nutrition.micronutrients.cholesterol
+        ? Math.round(nutrition.micronutrients.cholesterol * scaleFactor * 10) / 10
+        : null,
+      potassium: nutrition.micronutrients.potassium
+        ? Math.round(nutrition.micronutrients.potassium * scaleFactor * 10) / 10
+        : null,
+      vitaminA: nutrition.micronutrients.vitaminA
+        ? Math.round(nutrition.micronutrients.vitaminA * scaleFactor * 10) / 10
+        : null,
+      vitaminC: nutrition.micronutrients.vitaminC
+        ? Math.round(nutrition.micronutrients.vitaminC * scaleFactor * 10) / 10
+        : null,
+      calcium: nutrition.micronutrients.calcium
+        ? Math.round(nutrition.micronutrients.calcium * scaleFactor * 10) / 10
+        : null,
+      iron: nutrition.micronutrients.iron
+        ? Math.round(nutrition.micronutrients.iron * scaleFactor * 10) / 10
+        : null,
+    },
+  };
+}
+
 export function FoodItemCard({ item }: FoodItemCardProps) {
   const theme = useTheme();
   const [showMicronutrients, setShowMicronutrients] = useState(false);
+
+  // Step 3: Portion adjuster state
+  const initialGrams = item.nutrition?.servingSize ?? item.estimatedGrams ?? 150;
+  const [adjustedGrams, setAdjustedGrams] = useState(initialGrams);
 
   const confidencePercent = Math.round(item.confidence * 100);
 
@@ -116,6 +182,30 @@ export function FoodItemCard({ item }: FoodItemCardProps) {
 
   const hasNutrition = item.nutritionStatus === 'found' && item.nutrition;
 
+  // Step 3: Memoized scaled nutrition (recalculates when adjustedGrams changes)
+  const scaledNutrition = useMemo(() => {
+    if (!hasNutrition || !item.nutrition) return null;
+    return scaleNutrition(item.nutrition, adjustedGrams);
+  }, [adjustedGrams, hasNutrition, item.nutrition]);
+
+  // Step 3: Handler functions for portion adjustment
+  const handleAdjustGrams = (delta: number) => {
+    const newGrams = Math.max(5, Math.min(2000, adjustedGrams + delta));
+    setAdjustedGrams(newGrams);
+  };
+
+  const handleReset = () => {
+    setAdjustedGrams(initialGrams);
+  };
+
+  // Helper: Get confidence label for estimation method
+  const getEstimationConfidence = (): string => {
+    const method = item.estimationMethod || '';
+    if (method.includes('calibrated')) return 'High Confidence';
+    if (method.includes('visual')) return 'Medium Confidence';
+    return 'Low Confidence';
+  };
+
   return (
     <ThemedView
       type="backgroundElement"
@@ -159,17 +249,100 @@ export function FoodItemCard({ item }: FoodItemCardProps) {
       )}
 
       {/* Nutrition Data Section */}
-      {hasNutrition && item.nutrition && (
+      {hasNutrition && item.nutrition && scaledNutrition && (
         <>
+          {/* Step 3: Portion Adjuster Section */}
+          <ThemedView type="backgroundElement" style={styles.portionAdjusterSection}>
+            <View style={styles.portionAdjusterHeader}>
+              <View style={styles.estimatedPortionInfo}>
+                <ThemedText style={styles.portionEstimateLabel}>Estimated Portion</ThemedText>
+                <ThemedText style={styles.portionEstimateValue}>
+                  {item.estimatedGrams}g {item.uncertaintyGrams ? `±${item.uncertaintyGrams}g` : ''}
+                </ThemedText>
+                <ThemedText style={styles.estimationMethodLabel} themeColor="textSecondary">
+                  {getEstimationConfidence()}
+                </ThemedText>
+              </View>
+            </View>
+
+            <View style={styles.portionAdjustmentControls}>
+              <Pressable
+                onPress={() => handleAdjustGrams(-25)}
+                style={({ pressed }) => [
+                  styles.adjustButton,
+                  pressed && styles.adjustButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease portion by 25 grams"
+              >
+                <ThemedText style={styles.adjustButtonText}>−25g</ThemedText>
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleAdjustGrams(-5)}
+                style={({ pressed }) => [
+                  styles.adjustButton,
+                  pressed && styles.adjustButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease portion by 5 grams"
+              >
+                <ThemedText style={styles.adjustButtonText}>−5g</ThemedText>
+              </Pressable>
+
+              <ThemedText style={styles.currentGramsDisplay}>{adjustedGrams}g</ThemedText>
+
+              <Pressable
+                onPress={() => handleAdjustGrams(5)}
+                style={({ pressed }) => [
+                  styles.adjustButton,
+                  pressed && styles.adjustButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Increase portion by 5 grams"
+              >
+                <ThemedText style={styles.adjustButtonText}>+5g</ThemedText>
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleAdjustGrams(25)}
+                style={({ pressed }) => [
+                  styles.adjustButton,
+                  pressed && styles.adjustButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Increase portion by 25 grams"
+              >
+                <ThemedText style={styles.adjustButtonText}>+25g</ThemedText>
+              </Pressable>
+            </View>
+
+            {adjustedGrams !== initialGrams && (
+              <Pressable
+                onPress={handleReset}
+                style={({ pressed }) => [
+                  styles.resetButton,
+                  pressed && styles.resetButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Reset to AI estimate ${initialGrams} grams`}
+              >
+                <ThemedText style={styles.resetButtonText}>
+                  ↻ Reset to {initialGrams}g
+                </ThemedText>
+              </Pressable>
+            )}
+          </ThemedView>
+
           {/* Calories - Prominent Display */}
           <View style={styles.calorieSection}>
             <ThemedText style={styles.calorieLabel}>Calories</ThemedText>
             <ThemedText style={styles.calorieValue}>
-              {formatValue(item.nutrition.calories, '')}
+              {formatValue(scaledNutrition.calories, '')}
             </ThemedText>
             <ThemedText style={styles.servingText} themeColor="textSecondary">
-              per {item.nutrition.servingSize}
-              {item.nutrition.servingUnit}
+              per {scaledNutrition.servingSize}
+              {scaledNutrition.servingUnit}
             </ThemedText>
           </View>
 
@@ -177,14 +350,14 @@ export function FoodItemCard({ item }: FoodItemCardProps) {
           <View style={styles.macrosSection}>
             <ThemedText style={styles.sectionTitle}>Macronutrients</ThemedText>
             <View style={styles.macrosGrid}>
-              {renderMacroItem('Protein', item.nutrition.macronutrients.protein)}
-              {renderMacroItem('Carbs', item.nutrition.macronutrients.carbohydrates)}
-              {renderMacroItem('Fat', item.nutrition.macronutrients.totalFat)}
-              {renderMacroItem('Fiber', item.nutrition.macronutrients.fiber)}
-              {renderMacroItem('Sugar', item.nutrition.macronutrients.sugar)}
+              {renderMacroItem('Protein', scaledNutrition.macronutrients.protein)}
+              {renderMacroItem('Carbs', scaledNutrition.macronutrients.carbohydrates)}
+              {renderMacroItem('Fat', scaledNutrition.macronutrients.totalFat)}
+              {renderMacroItem('Fiber', scaledNutrition.macronutrients.fiber)}
+              {renderMacroItem('Sugar', scaledNutrition.macronutrients.sugar)}
               {renderMacroItem(
                 'Sat. Fat',
-                item.nutrition.macronutrients.saturatedFat
+                scaledNutrition.macronutrients.saturatedFat
               )}
             </View>
           </View>
@@ -205,31 +378,31 @@ export function FoodItemCard({ item }: FoodItemCardProps) {
 
           {showMicronutrients && (
             <View style={styles.microsGrid}>
-              {renderMicroItem('Sodium', item.nutrition.micronutrients.sodium, 'mg')}
+              {renderMicroItem('Sodium', scaledNutrition.micronutrients.sodium, 'mg')}
               {renderMicroItem(
                 'Potassium',
-                item.nutrition.micronutrients.potassium,
+                scaledNutrition.micronutrients.potassium,
                 'mg'
               )}
               {renderMicroItem(
                 'Calcium',
-                item.nutrition.micronutrients.calcium,
+                scaledNutrition.micronutrients.calcium,
                 'mg'
               )}
-              {renderMicroItem('Iron', item.nutrition.micronutrients.iron, 'mg')}
+              {renderMicroItem('Iron', scaledNutrition.micronutrients.iron, 'mg')}
               {renderMicroItem(
                 'Vitamin A',
-                item.nutrition.micronutrients.vitaminA,
+                scaledNutrition.micronutrients.vitaminA,
                 'µg'
               )}
               {renderMicroItem(
                 'Vitamin C',
-                item.nutrition.micronutrients.vitaminC,
+                scaledNutrition.micronutrients.vitaminC,
                 'mg'
               )}
               {renderMicroItem(
                 'Cholesterol',
-                item.nutrition.micronutrients.cholesterol,
+                scaledNutrition.micronutrients.cholesterol,
                 'mg'
               )}
             </View>
@@ -395,6 +568,70 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  portionAdjusterSection: {
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+    marginBottom: Spacing.three,
+    gap: Spacing.two,
+  },
+  portionAdjusterHeader: {
+    marginBottom: Spacing.two,
+  },
+  estimatedPortionInfo: {
+    gap: Spacing.one,
+  },
+  portionEstimateLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  portionEstimateValue: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  estimationMethodLabel: {
+    fontSize: 11,
+  },
+  portionAdjustmentControls: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  adjustButton: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: Spacing.one,
+    backgroundColor: '#5AC8FA',
+  },
+  adjustButtonPressed: {
+    opacity: 0.7,
+  },
+  adjustButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  currentGramsDisplay: {
+    fontSize: 14,
+    fontWeight: '600',
+    minWidth: 50,
+    textAlign: 'center',
+  },
+  resetButton: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    backgroundColor: 'rgba(52, 199, 89, 0.15)',
+    alignItems: 'center',
+  },
+  resetButtonPressed: {
+    opacity: 0.7,
+  },
+  resetButtonText: {
+    color: '#34C759',
+    fontWeight: '600',
+    fontSize: 13,
   },
   calorieSection: {
     alignItems: 'center',

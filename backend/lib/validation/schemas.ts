@@ -48,3 +48,106 @@ export const ImageUploadSchema = z.object({
  * Type inferred from ImageUploadSchema
  */
 export type ImageUpload = z.infer<typeof ImageUploadSchema>;
+
+// ─── Capture Metadata Validation ────────────────────────────────────────────
+//
+// The mobile app sends metadata about the image capture alongside the food photo.
+// This metadata travels via FormData (web) or X-Capture-Metadata header (native Expo).
+// We validate it with Zod to ensure it matches the expected shape before using it.
+
+// ─── Capture Metadata Sub-Schemas ─────────────────────────────────────────
+
+const CaptureModeSchema = z.enum(['camera', 'gallery']);
+
+const ImageMimeTypeSchema = z.enum([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/unknown',
+]);
+
+const ImageOrientationSchema = z.enum([
+  'portrait',
+  'landscape-left',
+  'landscape-right',
+]);
+
+const ReferenceMarkerTypeSchema = z.enum([
+  'credit_card',
+  'us_quarter',
+  'us_penny',
+  'one_euro_coin',
+  'ruler',
+  'custom',
+]);
+
+/**
+ * Matches ReferenceCalibrationConfigV1 (enabled = true variant).
+ */
+const ReferenceCalibrationEnabledSchema = z.object({
+  version: z.literal(1),
+  enabled: z.literal(true),
+  selectedMarkerType: ReferenceMarkerTypeSchema.optional(),
+  customDimensionsMm: z
+    .object({ widthMm: z.number(), heightMm: z.number() })
+    .optional(),
+  statusMessage: z.string(),
+});
+
+/**
+ * Matches { enabled: false } (calibration skipped / gallery upload).
+ */
+const ReferenceCalibrationDisabledSchema = z.object({
+  enabled: z.literal(false),
+  // version and statusMessage are optional — the disabled variant doesn't
+  // require them per the frontend type.
+  version: z.literal(1).optional(),
+  statusMessage: z.string().optional(),
+});
+
+/**
+ * Discriminated union: enabled:true requires the full V1 config;
+ * enabled:false is the minimal "skipped" sentinel.
+ */
+const ReferenceCalibrationSchema = z.discriminatedUnion('enabled', [
+  ReferenceCalibrationEnabledSchema,
+  ReferenceCalibrationDisabledSchema,
+]);
+
+/**
+ * Capture Metadata Schema — V1
+ *
+ * Validates the `FoodCaptureMetadataV1` structure sent by the mobile app.
+ * All fields that are optional on the frontend are marked `.optional()` here;
+ * required fields use sensible Zod constraints.
+ */
+export const CaptureMetadataSchema = z.object({
+  version: z.literal(1),
+
+  // Capture session
+  capturedAt: z.string().min(1),
+  captureMode: CaptureModeSchema,
+
+  // Image dimensions (measured)
+  imageWidthPx: z.number().int().positive(),
+  imageHeightPx: z.number().int().positive(),
+
+  // Image properties (measured)
+  mimeType: ImageMimeTypeSchema,
+  estimatedFileSizeBytesApprox: z.number().positive().optional(),
+
+  // Orientation (optional)
+  orientation: ImageOrientationSchema.optional(),
+
+  // Capture settings
+  compressionQuality: z.number().min(0).max(1).optional(),
+  exifStripped: z.boolean(),
+
+  // Reference calibration (always present but may be disabled)
+  referenceCalibration: ReferenceCalibrationSchema,
+
+  // Disclaimer string (one of two known literals, or any string for forward-compat)
+  disclaimer: z.string().min(1),
+});
+
+export type CaptureMetadata = z.infer<typeof CaptureMetadataSchema>;
