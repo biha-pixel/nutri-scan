@@ -37,17 +37,25 @@ export class FoodAnalysisService {
    *
    * @param image - The image data as a Buffer
    * @param mimeType - The image MIME type (e.g., "image/jpeg")
+   * @param calibrationContext - Optional capture metadata with reference calibration info.
+   *                             Passed through to the vision provider for geometry detection.
    * @returns Structured food recognition results
    */
   async analyzeFood(
     image: Buffer,
-    mimeType: string
+    mimeType: string,
+    calibrationContext?: any
   ): Promise<FoodRecognitionResult> {
     // Validate inputs
     this.validateImageInput(image, mimeType);
 
     // Call the vision provider (could be Gemini, OpenAI, etc.)
-    const result = await this.visionProvider.analyzeFoodImage(image, mimeType);
+    // Pass through calibration context if available
+    const result = await this.visionProvider.analyzeFoodImage(
+      image,
+      mimeType,
+      calibrationContext
+    );
 
     // Post-processing: filter out very low-confidence items
     // We don't want to show items the AI is very uncertain about

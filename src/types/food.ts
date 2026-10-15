@@ -86,6 +86,10 @@ export interface NutritionData {
   micronutrients: Micronutrients;
   sourceUrl: string | null;
   matchConfidence: 'exact' | 'close' | 'approximate';
+  // Step 3: Mass estimation metadata (optional)
+  massEstimationMethod?: string;
+  estimatedGrams?: number;
+  uncertaintyGrams?: number;
 }
 
 // ─── Highlight Types ────────────────────────────────────────────────
@@ -136,6 +140,30 @@ export interface AnalyzedFoodItem {
   highlights: NutritionHighlight[];
   candidates?: NutritionSearchCandidate[];
   errorMessage?: string;
+  // Step 3: Mass estimation metadata (optional)
+  estimatedGrams?: number;
+  uncertaintyGrams?: number;
+  estimationMethod?: string;
+  foodGeometryCategory?: string;
+  sizeTier?: string;
+}
+
+// ─── Calibration Summary (Step 3) ──────────────────────────────────
+
+/**
+ * Summary of reference marker detection and scale calibration.
+ * Returned at the top level of FoodAnalysisResult when calibration is attempted.
+ */
+export interface CalibrationSummary {
+  success: boolean;
+  validationStatus: string;
+  detectedMarker?: {
+    markerType: string;
+    confidence: number;
+  };
+  pixelsPerMmX?: number;
+  pixelsPerMmY?: number;
+  statusMessage?: string;
 }
 
 /**
@@ -146,6 +174,8 @@ export interface FoodAnalysisResult {
   imageQuality: 'good' | 'poor' | 'unrecognizable';
   message?: string;
   analyzedAt: string;
+  // Step 3: Calibration summary (optional, present when calibration attempted)
+  calibration?: CalibrationSummary;
 }
 
 // ─── API Response Wrappers ──────────────────────────────────────────

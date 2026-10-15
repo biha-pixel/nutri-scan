@@ -72,11 +72,14 @@ export class GeminiVisionProvider implements VisionProvider {
    *
    * @param image - The image data as a Buffer
    * @param mimeType - The image MIME type (e.g., "image/jpeg")
+   * @param calibrationContext - Optional capture metadata with reference calibration info.
+   *                             When provided, instructs Gemini to detect markers and return geometry.
    * @returns Structured food recognition results
    */
   async analyzeFoodImage(
     image: Buffer,
-    mimeType: string
+    mimeType: string,
+    calibrationContext?: any
   ): Promise<FoodRecognitionResult> {
     const base64Image = image.toString("base64");
     const dataUrl = `data:${mimeType};base64,${base64Image}`;
@@ -94,7 +97,7 @@ export class GeminiVisionProvider implements VisionProvider {
             {
               role: "user",
               content: [
-                { type: "text", text: this.buildPrompt() },
+                { type: "text", text: this.buildPrompt(calibrationContext) },
                 {
                   type: "image_url",
                   image_url: { url: dataUrl },
@@ -168,9 +171,11 @@ export class GeminiVisionProvider implements VisionProvider {
    * 2. Only identify food, NOT generate nutrition facts
    * 3. Include confidence scores
    * 4. Handle uncertainty explicitly
+   * 5. When calibration context is available, request geometry and bounding box data
+   * 6. Attempt to detect reference markers for scale calibration
    */
-  private buildPrompt(): string {
-    return `You are a food identification assistant. Analyze this image and identify ALL visible food items.
+  private buildPrompt(calibrationContext?: any): string {
+    const basePrompt = `You are a food identification assistant. Analyze this image and identify ALL visible food items.
 
 IMPORTANT RULES:
 1. ONLY identify food items - do NOT generate calorie counts, macronutrients, or any nutritional values
@@ -185,11 +190,23 @@ IMPORTANT RULES:
       "canonicalName": "standardized name for lookup (e.g., 'Banana, raw', 'Chicken, broilers or fryers, grilled')",
       "confidence": 0.0 to 1.0,
       "description": "brief description (e.g., 'ripe yellow banana', 'grilled chicken breast')",
-      "estimatedPortion": "rough estimate (e.g., '1 medium', '100g', '1 cup') - this is NOT precise"
+      "estimatedPortion": "rough estimate (e.g., '1 medium', '100g', '1 cup') - this is NOT precise",
+      "estimatedGrams": "optional: estimated mass in grams (if detectable)",
+      "foodGeometryCategory": "optional: 'discrete_unit', 'amorphous_mound', 'solid_slab', or 'liquid_or_bowl'",
+      "sizeTier": "optional: relative size (e.g., 'tiny', 'small', 'medium', 'large')",
+      "heightProfile": "optional: visual profile (e.g., 'flat', 'peaked', 'rounded')",
+      "itemCount": "optional: number of discrete items (if applicable)",
+      "visualScaleCue": "optional: description of any scale cues (e.g., 'ruler visible')",
+      "box2d": "optional: [ymin, xmin, ymax, xmax] bounding box normalized to 0-1000 scale"
     }
   ],
   "imageQuality": "good" | "poor" | "unrecognizable",
-  "message": "optional explanation if image quality is poor or no food is detected"
+  "message": "optional explanation if image quality is poor or no food is detected",
+  "detectedMarker": {
+    "markerType": "optional: type of reference marker detected (e.g., 'credit_card', 'us_quarter')",
+    "confidence": "optional: confidence score 0.0-1.0",
+    "box2d": "optional: [ymin, xmin, ymax, xmax] normalized to 0-1000"
+  }
 }
 
 GUIDELINES:
@@ -203,20 +220,57 @@ If no food is visible, return an empty items array with imageQuality "unrecogniz
 Do NOT invent or hallucinate food items that are not clearly visible.
 
 Return ONLY the JSON object, no other text.`;
+
+    if (calibrationContext) {
+      return `${basePrompt}
+
+CALIBRATION CONTEXT AVAILABLE:
+- Capture mode: ${calibrationContext.captureMode || 'unknown'}
+- Reference calibration: ${calibrationContext.referenceCalibration?.enabled ? 'enabled' : 'disabled'}
+${
+  calibrationContext.referenceCalibration?.enabled
+    ? `- Marker type: ${calibrationContext.referenceCalibration.selectedMarkerType || 'unknown'}`
+    : ''
+}
+
+When calibration is enabled, please:
+1. Attempt to detect the reference marker in the image
+2. Provide geometry data (foodGeometryCategory, estimatedGrams, box2d) for each food item
+3. Report the detected marker type and bounding box if found
+4. Use the reference marker to estimate physical scale if possible`;
+    }
+
+    return basePrompt;
   }
 
   /**
    * Parse and validate the model response.
    *
+   * This parser is resilient to common formatting issues:
+   * - Markdown code fences (```json ... ```)
+   * - Leading/trailing whitespace
+   * - Incomplete or malformed JSON
+   *
    * We validate with Zod because we cannot trust that the AI will always
-   * return perfectly formatted JSON.
+   * return perfectly formatted JSON. Optional geometry fields are allowed
+   * and will be undefined if not present.
    */
   private parseAndValidateResponse(
     responseText: string
   ): FoodRecognitionResult {
     try {
+      // Strip markdown code fences if present
+      let cleaned = responseText.trim();
+      if (cleaned.startsWith("```json")) {
+        cleaned = cleaned.replace(/^```json\s*/, "").replace(/```\s*$/, "");
+      } else if (cleaned.startsWith("```")) {
+        cleaned = cleaned.replace(/^```\s*/, "").replace(/```\s*$/, "");
+      }
+      cleaned = cleaned.trim();
+
       // Attempt to extract JSON from the response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      // Match the outermost { ... } to handle cases where text precedes or follows the JSON
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw {
           type: "validation_error",

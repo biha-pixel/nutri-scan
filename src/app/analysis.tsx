@@ -413,6 +413,45 @@ export default function AnalysisScreen() {
                   </ThemedView>
                 ) : null}
 
+                {/* Calibration Status Banner (Step 3) */}
+                {state.data.calibration ? (
+                  <ThemedView
+                    type="backgroundElement"
+                    style={[
+                      styles.calibrationBanner,
+                      {
+                        borderLeftColor:
+                          state.data.calibration.success ? '#34C759' : '#FF9500',
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.calibrationBannerText,
+                        {
+                          color: state.data.calibration.success ? '#34C759' : '#FF9500',
+                        },
+                      ]}
+                    >
+                      {state.data.calibration.success
+                        ? `📐 Calibrated${
+                            state.data.calibration.detectedMarker
+                              ? ` (${state.data.calibration.detectedMarker.markerType})`
+                              : ''
+                          }`
+                        : `⚠️ ${state.data.calibration.validationStatus || 'Calibration unavailable'}`}
+                    </ThemedText>
+                    {state.data.calibration.statusMessage ? (
+                      <ThemedText
+                        style={styles.calibrationStatusMessage}
+                        themeColor="textSecondary"
+                      >
+                        {state.data.calibration.statusMessage}
+                      </ThemedText>
+                    ) : null}
+                  </ThemedView>
+                ) : null}
+
                 <ThemedText style={styles.sectionTitle}>Nutrition Results</ThemedText>
               </View>
             }
@@ -607,6 +646,22 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  calibrationBanner: {
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+    marginBottom: Spacing.three,
+    borderLeftWidth: 4,
+  },
+  calibrationBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  calibrationStatusMessage: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: Spacing.one,
   },
   sectionTitle: {
     fontSize: 16,

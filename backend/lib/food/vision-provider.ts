@@ -1,4 +1,5 @@
 import type { FoodRecognitionResult } from "./types";
+import type { CaptureMetadata } from "@/lib/validation/schemas";
 
 /**
  * VisionProvider Interface
@@ -21,6 +22,10 @@ export interface VisionProvider {
    *
    * @param image - The image data as a Buffer (raw bytes)
    * @param mimeType - The image MIME type (e.g., "image/jpeg", "image/png")
+   * @param calibrationContext - Optional capture metadata containing reference calibration info.
+   *                             When provided, the vision model should attempt to detect
+   *                             reference markers and include geometry + bounding box info
+   *                             in the response. Null or undefined means no calibration context available.
    * @returns A promise that resolves to structured food recognition results
    * @throws {FoodRecognitionError} if the analysis fails
    *
@@ -30,6 +35,7 @@ export interface VisionProvider {
    */
   analyzeFoodImage(
     image: Buffer,
-    mimeType: string
+    mimeType: string,
+    calibrationContext?: CaptureMetadata | null
   ): Promise<FoodRecognitionResult>;
 }

@@ -5,6 +5,20 @@
  */
 
 /**
+ * Food geometry category — discrete classification of how the food appears in the image.
+ *
+ * - "discrete_unit": Individual, countable items (banana, apple, egg)
+ * - "amorphous_mound": Unstructured piles or collections (rice, lettuce, berries)
+ * - "solid_slab": Contiguous, roughly planar shapes (steak, bread, fish fillet)
+ * - "liquid_or_bowl": Liquids or foods in containers (soup, yogurt, sauce in a bowl)
+ */
+export type FoodGeometryCategory =
+  | "discrete_unit"
+  | "amorphous_mound"
+  | "solid_slab"
+  | "liquid_or_bowl";
+
+/**
  * A single food item detected in an image.
  */
 export interface FoodItem {
@@ -38,6 +52,65 @@ export interface FoodItem {
    * This is an ESTIMATE only — not a precise measurement.
    */
   estimatedPortion: string;
+
+  // ─── Geometry & Calibration Fields (Optional, for portion estimation) ───
+
+  /**
+   * Estimated mass in grams (if detectable from image and calibration).
+   * Only present if reference calibration was available and successful.
+   * This is a rough estimate, not a precise measurement.
+   */
+  estimatedGrams?: number;
+
+  /**
+   * Geometric category of how this food appears (e.g., discrete unit, mound, slab, liquid).
+   * Used to apply appropriate portion estimation heuristics.
+   */
+  foodGeometryCategory?: FoodGeometryCategory;
+
+  /**
+   * Size tier classification relative to typical portions.
+   * Examples: "tiny", "small", "medium", "large", "extra-large"
+   */
+  sizeTier?: string;
+
+  /**
+   * Visual height profile (e.g., "flat", "peaked", "rounded", "irregular").
+   * Helps estimate volume for amorphous items.
+   */
+  heightProfile?: string;
+
+  /**
+   * Estimated number of discrete items (if geometry is "discrete_unit").
+   * For continuous foods, this is typically 1 or null.
+   */
+  itemCount?: number;
+
+  /**
+   * Qualitative description of any visual scale cues detected (e.g., "ruler visible", "reference marker detected").
+   * Indicates whether manual scale calibration was possible.
+   */
+  visualScaleCue?: string;
+
+  /**
+   * 2D bounding box of this food item in the image, normalized to 0–1000 scale.
+   * Format: [ymin, xmin, ymax, xmax] (top, left, bottom, right).
+   * Null if detection failed or geometry was not applicable.
+   */
+  box2d?: [number, number, number, number] | null;
+}
+
+/**
+ * Detected reference marker in the image (optional).
+ * Only present when a marker was successfully detected during calibration.
+ */
+export interface DetectedMarker {
+  /** Type of marker detected (e.g., "credit_card", "us_quarter") */
+  markerType: string;
+  /** Confidence score (0.0 to 1.0) */
+  confidence: number;
+  /** 2D bounding box normalized to 0–1000 scale: [ymin, xmin, ymax, xmax] */
+  box2d?: [number, number, number, number] | null;
 }
 
 /**
@@ -63,6 +136,11 @@ export interface FoodRecognitionResult {
    * Example: "Image is too dark to identify food clearly"
    */
   message?: string;
+
+  /**
+   * Optional detected reference marker (if calibration was enabled and marker was found).
+   */
+  detectedMarker?: DetectedMarker;
 }
 
 /**
