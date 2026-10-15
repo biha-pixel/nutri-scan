@@ -103,6 +103,7 @@ export default function AnalysisScreen() {
 
   const { user, session } = useAuth();
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [adjustedPortions, setAdjustedPortions] = useState<{ [itemIndex: number]: number }>({});
 
   const [state, setState] = useState<AnalysisState>({
     kind: 'loading',
@@ -114,7 +115,7 @@ export default function AnalysisScreen() {
     if (state.kind === 'success' && user && session?.access_token && saveStatus === 'idle') {
       setSaveStatus('saving');
 
-      const payload = formatAnalysisResultForSave(state.data, user.id);
+      const payload = formatAnalysisResultForSave(state.data, user.id, undefined, adjustedPortions);
 
       saveScanRecord(payload, session.access_token)
         .then(() => setSaveStatus('saved'))
@@ -123,7 +124,7 @@ export default function AnalysisScreen() {
           setSaveStatus('error');
         });
     }
-  }, [state, user, session, saveStatus]);
+  }, [state, user, session, saveStatus, adjustedPortions]);
 
   const performAnalysis = useCallback(async () => {
     if (!imageUri) {
@@ -348,8 +349,15 @@ export default function AnalysisScreen() {
           <FlatList
             data={state.data.items}
             keyExtractor={(item, index) => `${item.canonicalName}-${index}`}
-            renderItem={({ item }: { item: AnalyzedFoodItem }) => (
-              <FoodItemCard item={item} />
+            renderItem={({ item, index }: { item: AnalyzedFoodItem; index?: number }) => (
+              <FoodItemCard
+                item={item}
+                onPortionChange={(grams) => {
+                  if (index !== undefined) {
+                    setAdjustedPortions(prev => ({ ...prev, [index]: grams }));
+                  }
+                }}
+              />
             )}
             contentContainerStyle={styles.listContent}
             ListHeaderComponent={

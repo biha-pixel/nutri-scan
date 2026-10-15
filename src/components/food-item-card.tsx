@@ -33,6 +33,7 @@ import type {
 
 interface FoodItemCardProps {
   item: AnalyzedFoodItem;
+  onPortionChange?: (grams: number) => void;
 }
 
 /**
@@ -96,7 +97,7 @@ function scaleNutrition(
   };
 }
 
-export function FoodItemCard({ item }: FoodItemCardProps) {
+export function FoodItemCard({ item, onPortionChange }: FoodItemCardProps) {
   const theme = useTheme();
   const [showMicronutrients, setShowMicronutrients] = useState(false);
 
@@ -192,10 +193,12 @@ export function FoodItemCard({ item }: FoodItemCardProps) {
   const handleAdjustGrams = (delta: number) => {
     const newGrams = Math.max(5, Math.min(2000, adjustedGrams + delta));
     setAdjustedGrams(newGrams);
+    onPortionChange?.(newGrams);
   };
 
   const handleReset = () => {
     setAdjustedGrams(initialGrams);
+    onPortionChange?.(initialGrams);
   };
 
   // Helper: Get confidence label for estimation method
