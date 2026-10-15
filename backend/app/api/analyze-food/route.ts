@@ -6,8 +6,11 @@ import { USDANutritionProvider } from "@/lib/nutrition/usda-provider";
 import { NutritionLookupService } from "@/lib/nutrition/nutrition-service";
 import { NutritionHighlightService } from "@/lib/highlights/highlights-service";
 import { ImageUploadSchema, CaptureMetadataSchema } from "@/lib/validation/schemas";
+import { validateImageFileHeader } from "@/lib/validation/file-validation";
 import { attemptScaleCalibration, attachCalibrationToResult } from "@/lib/calibration/scale-calibration";
 import { estimateFoodMass, scaleNutritionToMass } from "@/lib/nutrition/portion-mass-estimator";
+import { extractClientIp } from "@/lib/security/ip-extractor";
+import { checkRateLimit } from "@/lib/security/rate-limiter";
 import type { CaptureMetadata } from "@/lib/validation/schemas";
 import type { CalibrationSummary } from "@/lib/calibration/scale-calibration";
 import type { VisionProvider } from "@/lib/food/vision-provider";
@@ -177,6 +180,26 @@ export async function POST(
   request: NextRequest
 ): Promise<NextResponse<AnalyzeFoodApiResponse>> {
   try {
+    // 0. Rate Limiting Check
+    const clientIp = extractClientIp(request);
+    const rateLimitCheck = checkRateLimit(clientIp, 'analyze_food');
+    if (!rateLimitCheck.allowed) {
+      const retryAfter = rateLimitCheck.retryAfter || 60;
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'RATE_LIMITED',
+            message: `Too many requests. Please try again in ${retryAfter} seconds.`,
+          },
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': retryAfter.toString() }
+        }
+      );
+    }
+
     // 1. Parse Multipart Form Data
     const formData = await request.formData();
     const imageFile = formData.get("image");
@@ -227,7 +250,28 @@ export async function POST(
       );
     }
 
-    // 3. Extract optional capture metadata (returns validated data, undefined, or 400 error)
+    // 3. Convert image to Buffer and validate magic bytes
+    const arrayBuffer = await imageFile.arrayBuffer();
+    const imageBuffer = Buffer.from(arrayBuffer);
+
+    // Check magic bytes to prevent spoofed non-image files
+    const magicByteValidation = validateImageFileHeader(imageBuffer.slice(0, 16));
+    if (!magicByteValidation.isValid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_IMAGE_FORMAT',
+            message: 'The uploaded file does not appear to be a valid image. Please check the file and try again.',
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    const mimeType = imageFile.type || "image/jpeg";
+
+    // 4. Extract optional capture metadata (returns validated data, undefined, or 400 error)
     const captureMetadataOrError = extractCaptureMetadata(request, formData);
     if (captureMetadataOrError instanceof NextResponse) {
       return captureMetadataOrError; // 400 — malformed metadata
@@ -241,11 +285,6 @@ export async function POST(
         `calibration=${captureMetadata.referenceCalibration.enabled ? "enabled" : "disabled"}`
       );
     }
-
-    // 4. Convert image to Buffer
-    const arrayBuffer = await imageFile.arrayBuffer();
-    const imageBuffer = Buffer.from(arrayBuffer);
-    const mimeType = imageFile.type || "image/jpeg";
 
     // 5. AI Food Recognition via Vision Provider
     console.log("[analyze-food] Analyzing image with VisionProvider...");
