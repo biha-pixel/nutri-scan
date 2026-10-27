@@ -94,13 +94,15 @@ const highlightService = new NutritionHighlightService();
  * - Web path: FormData field "captureMetadata" (plain JSON string)
  * - Native path: X-Capture-Metadata header (URL-encoded JSON string via encodeURIComponent)
  *
- * @returns Validated CaptureMetadata if present and valid, undefined if absent,
- *          or a NextResponse 400 error if the data is present but malformed.
+ * GRACEFUL MODE: If metadata is present but malformed, log a warning and return undefined.
+ * The scan proceeds uncalibrated rather than failing the entire food analysis.
+ *
+ * @returns Validated CaptureMetadata if present and valid, undefined if absent or invalid.
  */
 function extractCaptureMetadata(
   request: NextRequest,
   formData: FormData
-): CaptureMetadata | NextResponse<AnalyzeFoodErrorResponse> | undefined {
+): CaptureMetadata | undefined {
   let rawJson: string | undefined;
 
   // Priority 1: Check FormData field (web uploads)
@@ -116,17 +118,8 @@ function extractCaptureMetadata(
       try {
         rawJson = decodeURIComponent(headerValue);
       } catch (decodeError) {
-        console.warn("[analyze-food] Failed to URL-decode X-Capture-Metadata header:", decodeError);
-        return NextResponse.json(
-          {
-            success: false as const,
-            error: {
-              code: "INVALID_CAPTURE_METADATA",
-              message: "The X-Capture-Metadata header could not be URL-decoded.",
-            },
-          },
-          { status: 400 }
-        );
+        console.warn("[analyze-food] Failed to URL-decode X-Capture-Metadata header — proceeding uncalibrated:", decodeError);
+        return undefined;
       }
     }
   }
@@ -141,36 +134,18 @@ function extractCaptureMetadata(
   try {
     parsed = JSON.parse(rawJson);
   } catch (parseError) {
-    console.warn("[analyze-food] Failed to parse capture metadata JSON:", parseError);
-    return NextResponse.json(
-      {
-        success: false as const,
-        error: {
-          code: "INVALID_CAPTURE_METADATA",
-          message: "Capture metadata is not valid JSON.",
-        },
-      },
-      { status: 400 }
-    );
+    console.warn("[analyze-food] Failed to parse capture metadata JSON — proceeding uncalibrated:", parseError);
+    return undefined;
   }
 
-  // Validate against schema
+  // Validate against schema — GRACEFULLY FALLBACK on failure
   const validation = CaptureMetadataSchema.safeParse(parsed);
   if (!validation.success) {
     console.warn(
-      "[analyze-food] Capture metadata failed validation:",
+      "[analyze-food] Capture metadata failed validation — proceeding uncalibrated:",
       validation.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ")
     );
-    return NextResponse.json(
-      {
-        success: false as const,
-        error: {
-          code: "INVALID_CAPTURE_METADATA",
-          message: `Capture metadata is invalid: ${validation.error.errors.map((e) => e.message).join(", ")}`,
-        },
-      },
-      { status: 400 }
-    );
+    return undefined;
   }
 
   return validation.data;
@@ -205,6 +180,7 @@ export async function POST(
     const imageFile = formData.get("image");
 
     if (!imageFile) {
+      console.error(`[analyze-food] 400 Validation Error: MISSING_IMAGE | No image file in formData`);
       return NextResponse.json(
         {
           success: false,
@@ -218,6 +194,7 @@ export async function POST(
     }
 
     if (!(imageFile instanceof File)) {
+      console.error(`[analyze-food] 400 Validation Error: INVALID_IMAGE | formData.get("image") is not a File instance | type=${typeof imageFile}`);
       return NextResponse.json(
         {
           success: false,
@@ -238,6 +215,7 @@ export async function POST(
     });
 
     if (!validation.success) {
+      console.error(`[analyze-food] 400 Validation Error: VALIDATION_ERROR | file="${imageFile.name}" type="${imageFile.type}" size=${imageFile.size} errors=${validation.error.errors.map((e) => e.message).join(", ")}`);
       return NextResponse.json(
         {
           success: false,
@@ -254,9 +232,16 @@ export async function POST(
     const arrayBuffer = await imageFile.arrayBuffer();
     const imageBuffer = Buffer.from(arrayBuffer);
 
+    // Log first 8 hex bytes for debugging
+    const hexBytes = imageBuffer.slice(0, 8).toString('hex').toUpperCase();
+    const fileName = imageFile.name || 'unknown';
+    const fileType = imageFile.type || 'unknown';
+    const fileSize = imageFile.size || 0;
+
     // Check magic bytes to prevent spoofed non-image files
-    const magicByteValidation = validateImageFileHeader(imageBuffer.slice(0, 16));
-    if (!magicByteValidation.isValid) {
+    const detectedMimeType = validateImageFileHeader(imageBuffer.slice(0, 16));
+    if (!detectedMimeType) {
+      console.error(`[analyze-food] 400 Validation Error: Invalid magic bytes | file="${fileName}" type="${fileType}" size=${fileSize} hex="${hexBytes}"`);
       return NextResponse.json(
         {
           success: false,
@@ -269,14 +254,11 @@ export async function POST(
       );
     }
 
-    const mimeType = imageFile.type || "image/jpeg";
+    // Use detected MIME type if client type is generic/unknown
+    const mimeType = detectedMimeType || imageFile.type || "image/jpeg";
 
-    // 4. Extract optional capture metadata (returns validated data, undefined, or 400 error)
-    const captureMetadataOrError = extractCaptureMetadata(request, formData);
-    if (captureMetadataOrError instanceof NextResponse) {
-      return captureMetadataOrError; // 400 — malformed metadata
-    }
-    const captureMetadata: CaptureMetadata | undefined = captureMetadataOrError;
+    // 4. Extract optional capture metadata - GRACEFUL: fallback to undefined on validation failure
+    const captureMetadata = extractCaptureMetadata(request, formData);
 
     if (captureMetadata) {
       console.log(
@@ -287,12 +269,15 @@ export async function POST(
     }
 
     // 5. AI Food Recognition via Vision Provider
+    const visionStartTime = Date.now();
     console.log("[analyze-food] Analyzing image with VisionProvider...");
     const recognitionResult = await foodAnalysisService.analyzeFood(
       imageBuffer,
       mimeType,
       captureMetadata
     );
+    const visionDuration = Date.now() - visionStartTime;
+    console.log(`[analyze-food] Vision analysis completed in ${visionDuration}ms. Items detected: ${recognitionResult.items.length}, Quality: ${recognitionResult.imageQuality}`);
 
     if (
       !recognitionResult.items ||
@@ -468,10 +453,22 @@ export async function POST(
       responseData.calibration = calibrationSummary;
     }
 
-    return NextResponse.json({
+    console.log(`[analyze-food] Preparing response: ${analyzedItems.length} items, quality=${recognitionResult.imageQuality}`);
+    console.log(`[analyze-food] Response payload size: ~${JSON.stringify(responseData).length} bytes`);
+
+    const finalResponse: AnalyzeFoodSuccessResponse = {
       success: true,
       data: responseData,
+    };
+
+    console.log(`[analyze-food] Final response structure:`, {
+      success: true,
+      itemCount: responseData.items.length,
+      imageQuality: responseData.imageQuality,
+      hasCalibration: !!responseData.calibration,
     });
+
+    return NextResponse.json(finalResponse);
   } catch (error) {
     console.error("[analyze-food] Fatal error in POST /api/analyze-food:", error);
 

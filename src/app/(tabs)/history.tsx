@@ -84,14 +84,14 @@ export default function HistoryScreen() {
         setIsRefreshing(false);
       }
     },
-    [session, offset]
+    [session]
   );
 
   useEffect(() => {
     if (user && session) {
       loadHistory(true);
     }
-  }, [user, session]);
+  }, [user, session, loadHistory]);
 
   const handleDelete = (id: string) => {
     Alert.alert('Delete Scan', 'Are you sure you want to delete this scan from your history?', [

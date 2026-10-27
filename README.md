@@ -1,56 +1,175 @@
-# Welcome to your Expo app 👋
+# NutriScan
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+NutriScan is a mobile application and modular backend service designed to photograph food, identify food items using multimodal AI, retrieve authoritative nutritional data from the USDA FoodData Central database, and display detailed nutrition facts with rule-based educational highlights, scale calibration, and portion adjustments.
 
-## Get started
+> **Disclaimer:** NutriScan is an educational and informational tool. It is **not** a medical application and does not provide medical diagnoses, personalized dietary therapy, or clinical nutritional advice.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## Architecture Overview
 
-2. Start the app
+NutriScan follows a modular monolith architecture consisting of two primary deployable units:
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+Mobile App (Expo / React Native)
+        │
+        │  HTTPS  (multipart/form-data image upload, JSON responses)
+        ▼
+Next.js Backend  (API Route Handlers)
+        │
+        ├──▶  AI Vision Service  (Gemini multimodal API via OmniRoute provider abstraction)
+        │           │
+        │           └──▶  Food identification result (structured JSON with confidence)
+        │
+        └──▶  Nutrition Lookup Service  (USDA FoodData Central provider abstraction)
+                    │
+                    └──▶  Nutrition data (normalized to internal schema)
+                                │
+                                └──▶  Benefit & Highlight Rules (deterministic, rule-based)
+                                            │
+                                            └──▶  Structured API Response  ──▶  Mobile App
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-### Other setup steps
+## Key Features & Capabilities
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+- **Multimodal AI Food Identification**: Identifies food items and estimates initial portions from captured images.
+- **Authoritative Nutrition Data**: Fetches verified nutritional profiles from USDA FoodData Central.
+- **Reference Calibration & Geometry**: Supports scale calibration using reference markers to improve portion estimation accuracy.
+- **Interactive Portion Adjuster**: Allows users to dynamically adjust portion sizes with real-time recalculation of calories and macronutrients.
+- **Scan History & Persistence**: Saves analysis results and user adjustments to local storage / Supabase backend.
+- **Security & Hardening**: Magic-byte image validation, IP extraction, sliding-window rate limiting, and server-side secret management.
+- **Accuracy Evaluation Module**: Built-in test fixtures and evaluators for assessing estimation accuracy against weighed-food samples.
 
-## Learn more
+---
 
-To learn more about developing your project with Expo, look at the following resources:
+## Technology Stack
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Mobile App
+- **Framework**: Expo (Managed Workflow, SDK 57)
+- **UI & Navigation**: React Native, Expo Router (file-based routing)
+- **Language**: TypeScript (Strict mode)
 
-## Join the community
+### Backend API
+- **Framework**: Next.js (App Router, API Route Handlers)
+- **Validation**: Zod (runtime validation at all API boundaries)
+- **Database & Auth**: Supabase PostgreSQL with Row Level Security (RLS)
+- **AI Vision**: Google Gemini multimodal API (via OmniRoute abstraction)
+- **Nutrition Source**: USDA FoodData Central API
 
-Join our community of developers creating universal apps.
+---
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Project Structure
+
+```
+/                          ← Expo mobile app root
+├── src/
+│   ├── app/               ← Expo Router screens (file-based routing)
+│   ├── components/        ← Reusable UI components and widgets
+│   ├── hooks/             ← Custom React hooks
+│   ├── services/          ← API integration services
+│   ├── types/             ← Shared TypeScript types
+│   ├── utils/             ← Pure utility functions
+│   └── constants/         ← Colors, spacing, and configuration
+├── assets/                ← Static images, fonts, and icons
+└── docs/                  ← Architecture and evaluation documentation
+
+/backend/                  ← Next.js backend service
+├── app/
+│   └── api/               ← API Route Handlers (/api/analyze-food, /api/nutrition, etc.)
+├── lib/
+│   ├── vision/            ← AI vision provider abstraction + Gemini implementation
+│   ├── nutrition/         ← Nutrition provider abstraction + USDA implementation
+│   ├── highlights/        ← Rule-based benefit and highlight generator
+│   ├── evaluation/        ← Weighed-sample accuracy evaluation module
+│   ├── security/          ← Rate limiter and magic-byte image validation
+│   └── validation/        ← Zod validation schemas
+└── types/                 ← Shared backend TypeScript types
+```
+
+---
+
+## Local Setup & Installation
+
+### Prerequisites
+- Node.js (v18+ recommended)
+- npm or yarn
+- Expo CLI / Expo Go app on your mobile device (or iOS/Android simulator)
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/biha-pixel/nutrition-app.git
+cd nutrition-app
+```
+
+### 2. Set Up and Run the Backend
+
+1. Navigate to the backend directory:
+   ```bash
+   cd backend
+   npm install
+   ```
+2. Create your local environment configuration:
+   ```bash
+   cp .env.example .env.local
+   ```
+3. Populate `.env.local` with your API keys and configuration:
+   ```env
+   OMNIROUTE_API_KEY=your_omniroute_api_key_here
+   OMNIROUTE_BASE_URL=http://localhost:20128
+   OMNIROUTE_MODEL=gemini
+   USDA_API_KEY=your_usda_api_key_here
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
+   ```
+4. Start the backend development server:
+   ```bash
+   npm run dev
+   ```
+   *The backend will run on `http://localhost:3001`.*
+
+### 3. Set Up and Run the Mobile App
+
+1. Open a new terminal and return to the root directory:
+   ```bash
+   cd ..
+   npm install
+   ```
+2. Start the Expo development server:
+   ```bash
+   npm start
+   ```
+3. Press `i` for iOS simulator, `a` for Android emulator, or scan the QR code using the Expo Go app on your physical device.
+
+---
+
+## Testing & Verification
+
+NutriScan includes unit and integration tests across both the mobile client and backend modules.
+
+### Run Backend Tests
+```bash
+cd backend
+npm test
+```
+
+### Run Mobile Client Tests
+```bash
+npm test
+```
+
+---
+
+## Security & Compliance Rules
+
+1. **No Client-Side Secrets**: All API keys (Gemini, USDA, Supabase service role) reside exclusively in server-side environment variables.
+2. **Input Validation**: All incoming API requests and payloads are strictly validated using Zod schemas on the server.
+3. **Image Hardening**: Uploaded images undergo magic-byte signature validation to ensure valid MIME types prior to vision processing.
+4. **Rate Limiting**: Rate limiting middleware protects expensive AI vision and nutrition lookup endpoints.
+
+---
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for details.

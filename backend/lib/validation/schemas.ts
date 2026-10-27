@@ -4,9 +4,9 @@ import { z } from "zod";
  * Image Upload Validation Schema
  *
  * This validates that an uploaded image meets our requirements:
- * - Has a valid file name
+ * - Has a valid file name (or is a blob without extension - magic bytes validate content)
  * - Is within size limits
- * - Has an allowed MIME type
+ * - Has an allowed MIME type (or application/octet-stream for blobs)
  */
 const VALID_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
 const VALID_IMAGE_MIME_TYPES = [
@@ -16,7 +16,7 @@ const VALID_IMAGE_MIME_TYPES = [
   "image/webp",
   "image/heic",
   "image/heif",
-  "application/octet-stream",
+  "application/octet-stream", // For blob uploads without extension
 ];
 
 export const ImageUploadSchema = z.object({
@@ -25,6 +25,10 @@ export const ImageUploadSchema = z.object({
     .min(1, "File name is required")
     .refine(
       (name) => {
+        // Allow blobs/files without extensions - magic byte validation handles content verification
+        if (name === "blob" || name === "file" || name === "image") {
+          return true;
+        }
         return VALID_IMAGE_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
       },
       { message: "File must have a valid image extension (.jpg, .jpeg, .png, .webp, .heic)" }
@@ -38,7 +42,8 @@ export const ImageUploadSchema = z.object({
     .default("image/jpeg")
     .refine(
       (type) => {
-        return VALID_IMAGE_MIME_TYPES.includes((type || "").toLowerCase());
+        const normalizedType = (type || "image/jpeg").toLowerCase();
+        return VALID_IMAGE_MIME_TYPES.includes(normalizedType);
       },
       { message: "Image must be a JPEG, PNG, WebP, or HEIC file" }
     ),
@@ -120,6 +125,7 @@ const ReferenceCalibrationSchema = z.discriminatedUnion('enabled', [
  * Validates the `FoodCaptureMetadataV1` structure sent by the mobile app.
  * All fields that are optional on the frontend are marked `.optional()` here;
  * required fields use sensible Zod constraints.
+ * Width/height can be 0 if not available (camera preview not fully ready).
  */
 export const CaptureMetadataSchema = z.object({
   version: z.literal(1),
@@ -128,9 +134,9 @@ export const CaptureMetadataSchema = z.object({
   capturedAt: z.string().min(1),
   captureMode: CaptureModeSchema,
 
-  // Image dimensions (measured)
-  imageWidthPx: z.number().int().positive(),
-  imageHeightPx: z.number().int().positive(),
+  // Image dimensions (measured) - can be 0 if not yet available
+  imageWidthPx: z.number().int().nonnegative(),
+  imageHeightPx: z.number().int().nonnegative(),
 
   // Image properties (measured)
   mimeType: ImageMimeTypeSchema,

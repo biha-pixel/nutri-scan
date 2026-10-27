@@ -127,10 +127,25 @@ export async function analyzeFoodImage(
 
       if (!uploadResult.ok) {
         const errorText = await uploadResult.text().catch(() => '');
+        let errorMessage = `Server returned status ${uploadResult.status}. Please try again.`;
+        let errorCode = 'HTTP_ERROR';
+        let errorDetails: unknown = { status: uploadResult.status, body: errorText };
+
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error?.message) {
+            errorMessage = errorJson.error.message;
+            errorCode = errorJson.error.code || 'HTTP_ERROR';
+            errorDetails = errorJson.error;
+          }
+        } catch {
+          // Not JSON, use raw text
+        }
+
         throw new AnalyzeServiceError(
-          `Server returned status ${uploadResult.status}. Please try again.`,
-          'HTTP_ERROR',
-          { status: uploadResult.status, body: errorText }
+          errorMessage,
+          errorCode,
+          errorDetails
         );
       }
 
@@ -178,21 +193,77 @@ export async function analyzeFoodImage(
       uploadHeaders['X-Capture-Metadata'] = encodeURIComponent(captureMetadataJson);
     }
 
-    const uploadResult = await tempUploadFile.upload(API_ENDPOINTS.analyzeFood, {
-      httpMethod: 'POST',
-      uploadType: UploadType.MULTIPART,
-      fieldName: 'image',
-      mimeType,
-      headers: uploadHeaders,
-    });
+    const uploadStartTime = Date.now();
+    console.log(`[analyze-service] Sending multipart upload with file size ${tempUploadFile.size}B to ${API_ENDPOINTS.analyzeFood}`);
 
-    console.log(`[analyze-service] [4/5] Upload completed with HTTP status: ${uploadResult.status}`);
+    let uploadResult;
+    try {
+      uploadResult = await tempUploadFile.upload(API_ENDPOINTS.analyzeFood, {
+        httpMethod: 'POST',
+        uploadType: UploadType.MULTIPART,
+        fieldName: 'image',
+        mimeType,
+        headers: uploadHeaders,
+      });
+    } catch (uploadError) {
+      const uploadDuration = Date.now() - uploadStartTime;
+      console.error(`[analyze-service] Upload failed after ${uploadDuration}ms:`, uploadError);
+
+      if (uploadError instanceof Error) {
+        if (uploadError.message.includes('Network')) {
+          throw new AnalyzeServiceError(
+            'Network connection lost. Please check your internet connection.',
+            'NETWORK_ERROR',
+            uploadError
+          );
+        }
+        if (uploadError.message.includes('timeout') || uploadDuration > 120000) {
+          throw new AnalyzeServiceError(
+            'The analysis is taking longer than expected. Please try again with better internet or a smaller image.',
+            'TIMEOUT',
+            uploadError
+          );
+        }
+      }
+      throw uploadError;
+    }
+
+    const uploadDuration = Date.now() - uploadStartTime;
+    console.log(`[analyze-service] [4/5] Upload completed with HTTP status: ${uploadResult.status} (took ${uploadDuration}ms)`);
+    console.log(`[analyze-service] Response body size: ${uploadResult.body?.length || 0} bytes`);
+    if (uploadResult.body) {
+      try {
+        const preview = uploadResult.body.substring(0, 300);
+        console.log(`[analyze-service] Response preview: ${preview}${uploadResult.body.length > 300 ? '...' : ''}`);
+      } catch (e) {
+        console.log(`[analyze-service] Could not read response body`);
+      }
+    }
 
     if (uploadResult.status < 200 || uploadResult.status >= 300) {
+      // Try to parse the server error response to get the actual error message
+      let errorMessage = `Server returned status ${uploadResult.status}. Please try again.`;
+      let errorCode = 'HTTP_ERROR';
+      let errorDetails: unknown = { status: uploadResult.status, body: uploadResult.body };
+
+      if (uploadResult.body) {
+        try {
+          const errorJson = JSON.parse(uploadResult.body);
+          if (errorJson.error?.message) {
+            errorMessage = errorJson.error.message;
+            errorCode = errorJson.error.code || 'HTTP_ERROR';
+            errorDetails = errorJson.error;
+          }
+        } catch (parseErr) {
+          // Failed to parse error response, use raw body
+          console.warn('[analyze-service] Failed to parse error response JSON:', parseErr);
+        }
+      }
+
       throw new AnalyzeServiceError(
-        `Server returned status ${uploadResult.status}. Please try again.`,
-        'HTTP_ERROR',
-        { status: uploadResult.status, body: uploadResult.body }
+        errorMessage,
+        errorCode,
+        errorDetails
       );
     }
 
@@ -207,6 +278,11 @@ export async function analyzeFoodImage(
     const responseData: AnalyzeFoodApiResponse = JSON.parse(uploadResult.body);
 
     console.log(`[analyze-service] [5/5] Backend parsed response success: ${responseData.success}`);
+    console.log(`[analyze-service] Response structure:`, {
+      success: responseData.success,
+      itemCount: responseData.success ? responseData.data.items?.length : 'N/A',
+      imageQuality: responseData.success ? responseData.data.imageQuality : responseData.error?.code,
+    });
 
     if (!responseData.success) {
       throw new AnalyzeServiceError(

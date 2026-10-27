@@ -18,15 +18,25 @@ export const WeighedFoodSampleSchema = z.object({
   uncertaintyGrams: z.number().optional(),
 });
 
-export const AccuracyMetricsSchema = z.object({
+type AccuracyMetricsType = {
+  mae: number;
+  mape: number;
+  wmape: number;
+  rmse: number;
+  count: number;
+  samplesByGeometry?: Record<string, AccuracyMetricsType>;
+  samplesByMethod?: Record<string, AccuracyMetricsType>;
+};
+
+export const AccuracyMetricsSchema: z.ZodType<AccuracyMetricsType> = z.lazy(() => z.object({
   mae: z.number(),
   mape: z.number(),
   wmape: z.number(),
   rmse: z.number(),
   count: z.number().int(),
-  samplesByGeometry: z.record(z.lazy(() => AccuracyMetricsSchema)),
-  samplesByMethod: z.record(z.lazy(() => AccuracyMetricsSchema)),
-});
+  samplesByGeometry: z.record(AccuracyMetricsSchema).optional(),
+  samplesByMethod: z.record(AccuracyMetricsSchema).optional(),
+}) as z.ZodType<AccuracyMetricsType>);
 
 export const ComparisonResultSchema = z.union([
   z.object({
@@ -43,5 +53,5 @@ export const ComparisonResultSchema = z.union([
 ]);
 
 export type WeighedFoodSample = z.infer<typeof WeighedFoodSampleSchema>;
-export type AccuracyMetrics = z.infer<typeof AccuracyMetricsSchema>;
+export type AccuracyMetrics = AccuracyMetricsType;
 export type ComparisonResult = z.infer<typeof ComparisonResultSchema>;

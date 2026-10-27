@@ -103,13 +103,14 @@ export interface FoodItem {
 /**
  * Detected reference marker in the image (optional).
  * Only present when a marker was successfully detected during calibration.
+ * Fields can be null or undefined since the response may return partial data.
  */
 export interface DetectedMarker {
-  /** Type of marker detected (e.g., "credit_card", "us_quarter") */
-  markerType: string;
-  /** Confidence score (0.0 to 1.0) */
-  confidence: number;
-  /** 2D bounding box normalized to 0–1000 scale: [ymin, xmin, ymax, xmax] */
+  /** Type of marker detected (e.g., "credit_card", "us_quarter"), or null/undefined if not detected */
+  markerType?: string | null;
+  /** Confidence score (0.0 to 1.0), or null/undefined if not applicable */
+  confidence?: number | null;
+  /** 2D bounding box normalized to 0–1000 scale: [ymin, xmin, ymax, xmax], or null if not applicable */
   box2d?: [number, number, number, number] | null;
 }
 
@@ -139,8 +140,9 @@ export interface FoodRecognitionResult {
 
   /**
    * Optional detected reference marker (if calibration was enabled and marker was found).
+   * Can be null, undefined, or a DetectedMarker object.
    */
-  detectedMarker?: DetectedMarker;
+  detectedMarker?: DetectedMarker | null;
 }
 
 /**

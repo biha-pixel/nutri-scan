@@ -117,6 +117,9 @@ export class GeminiVisionProvider implements VisionProvider {
           } as FoodRecognitionError;
         }
 
+        // Log the raw response for debugging
+        console.log(`[VisionProvider] Attempt ${attempt} raw response (first 500 chars): ${responseText.substring(0, 500)}`);
+
         // Try to parse and validate. If this throws, the catch block
         // will trigger a retry with the next model in OmniRoute's pool.
         const result = this.parseAndValidateResponse(responseText);
@@ -175,51 +178,39 @@ export class GeminiVisionProvider implements VisionProvider {
    * 6. Attempt to detect reference markers for scale calibration
    */
   private buildPrompt(calibrationContext?: any): string {
-    const basePrompt = `You are a food identification assistant. Analyze this image and identify ALL visible food items.
+    const basePrompt = `You must respond with ONLY valid JSON. No other text before, after, or inside.
 
-IMPORTANT RULES:
-1. ONLY identify food items - do NOT generate calorie counts, macronutrients, or any nutritional values
-2. If you cannot confidently identify an item, say so
-3. Distinguish food from non-food objects (plates, utensils, etc. are NOT food)
-4. Return your response as valid JSON matching this exact schema:
+Analyze this food image and return JSON:
 
 {
   "items": [
     {
-      "name": "common name of the food (e.g., 'banana', 'grilled chicken')",
-      "canonicalName": "standardized name for lookup (e.g., 'Banana, raw', 'Chicken, broilers or fryers, grilled')",
-      "confidence": 0.0 to 1.0,
-      "description": "brief description (e.g., 'ripe yellow banana', 'grilled chicken breast')",
-      "estimatedPortion": "rough estimate (e.g., '1 medium', '100g', '1 cup') - this is NOT precise",
-      "estimatedGrams": "optional: estimated mass in grams (if detectable)",
-      "foodGeometryCategory": "optional: 'discrete_unit', 'amorphous_mound', 'solid_slab', or 'liquid_or_bowl'",
-      "sizeTier": "optional: relative size (e.g., 'tiny', 'small', 'medium', 'large')",
-      "heightProfile": "optional: visual profile (e.g., 'flat', 'peaked', 'rounded')",
-      "itemCount": "optional: number of discrete items (if applicable)",
-      "visualScaleCue": "optional: description of any scale cues (e.g., 'ruler visible')",
-      "box2d": "optional: [ymin, xmin, ymax, xmax] bounding box normalized to 0-1000 scale"
+      "name": "banana",
+      "canonicalName": "Banana, raw",
+      "confidence": 0.95,
+      "description": "ripe yellow banana",
+      "estimatedPortion": "1 medium",
+      "estimatedGrams": 118,
+      "foodGeometryCategory": "discrete_unit",
+      "sizeTier": "medium",
+      "heightProfile": "curved",
+      "itemCount": 1,
+      "visualScaleCue": "typical banana size",
+      "box2d": [150, 200, 500, 700]
     }
   ],
-  "imageQuality": "good" | "poor" | "unrecognizable",
-  "message": "optional explanation if image quality is poor or no food is detected",
-  "detectedMarker": {
-    "markerType": "optional: type of reference marker detected (e.g., 'credit_card', 'us_quarter')",
-    "confidence": "optional: confidence score 0.0-1.0",
-    "box2d": "optional: [ymin, xmin, ymax, xmax] normalized to 0-1000"
-  }
+  "imageQuality": "good",
+  "message": "",
+  "detectedMarker": null
 }
 
-GUIDELINES:
-- Confidence 0.9-1.0: Very confident in identification
-- Confidence 0.7-0.9: Confident but some uncertainty
-- Confidence 0.5-0.7: Uncertain - may need user verification
-- Confidence below 0.5: Very uncertain - likely should not be included
-
-If multiple food items are present, identify ALL of them.
-If no food is visible, return an empty items array with imageQuality "unrecognizable".
-Do NOT invent or hallucinate food items that are not clearly visible.
-
-Return ONLY the JSON object, no other text.`;
+INSTRUCTIONS:
+- Identify all visible food items ONLY (not plates, utensils, hands)
+- confidence: 0.9-1.0 very sure, 0.7-0.9 sure, 0.5-0.7 uncertain, <0.5 don't include
+- If no food found: items=[], imageQuality="unrecognizable"
+- If image is blurry/dark: items=[], imageQuality="poor"
+- NEVER invent food. NEVER generate nutrition facts.
+- Return ONLY the JSON object. Start with { and end with }. Nothing else.`;
 
     if (calibrationContext) {
       return `${basePrompt}
@@ -259,6 +250,10 @@ When calibration is enabled, please:
     responseText: string
   ): FoodRecognitionResult {
     try {
+      // Log the raw response for debugging
+      console.log(`[VisionProvider] Raw response length: ${responseText.length}`);
+      console.log(`[VisionProvider] Raw response (first 800 chars): ${responseText.substring(0, 800)}`);
+
       // Strip markdown code fences if present
       let cleaned = responseText.trim();
       if (cleaned.startsWith("```json")) {
@@ -272,6 +267,7 @@ When calibration is enabled, please:
       // Match the outermost { ... } to handle cases where text precedes or follows the JSON
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
+        console.error(`[VisionProvider] Failed to extract JSON. Cleaned response: ${cleaned.substring(0, 500)}`);
         throw {
           type: "validation_error",
           message: "No valid JSON found in AI response",

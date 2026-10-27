@@ -82,18 +82,45 @@ export default function CaptureScreen() {
   const [selectedMarkerType, setSelectedMarkerType] = useState<ReferenceMarkerType | undefined>();
   const [showMarkerSelector, setShowMarkerSelector] = useState(false);
 
-  // Request permission on mount if needed
+  // Effect 1: Handle initial permission resolution (null -> granted/denied)
   React.useEffect(() => {
     if (permission === null) {
-      return; // Still loading
+      return; // Still loading initial permission status
     }
-    if (!permission.granted && permission.canAskAgain) {
-      // Auto-request permission on mount if we can
-      requestPermission().catch(() => {
-        // Error during request; user likely dismissed dialog
+    // Permission has resolved - transition based on granted status
+    if (permission.granted) {
+      setState({ kind: 'waiting-for-ready' });
+    } else {
+      setState({
+        kind: 'permission-denied',
+        canAskAgain: permission.canAskAgain,
       });
     }
-  }, [permission, requestPermission]);
+  }, [permission]);
+
+  // Effect 2: Auto-request permission once if denied but can ask again
+  React.useEffect(() => {
+    // Only run when we're in permission-denied state AND can ask again
+    if (state.kind !== 'permission-denied' || !state.canAskAgain) {
+      return;
+    }
+    let mounted = true;
+    requestPermission().then((result) => {
+      if (!mounted) return;
+      if (result.granted) {
+        setState({ kind: 'waiting-for-ready' });
+      } else {
+        setState({
+          kind: 'permission-denied',
+          canAskAgain: result.canAskAgain,
+        });
+      }
+    }).catch(() => {
+      if (!mounted) return;
+      setState({ kind: 'permission-denied', canAskAgain: false });
+    });
+    return () => { mounted = false; };
+  }, [state.kind, requestPermission]);
 
   // Unmount camera on screen exit to prevent dual previews
   React.useEffect(() => {
@@ -126,6 +153,23 @@ export default function CaptureScreen() {
       setState({ kind: 'ready' });
     }
   }
+
+  // Effect 3: Fallback timeout for waiting-for-ready state
+  // In Expo Go, onCameraReady sometimes never fires. After 1.5s, assume ready.
+  React.useEffect(() => {
+    if (state.kind !== 'waiting-for-ready') {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setState((prev) => {
+        if (prev.kind === 'waiting-for-ready') {
+          return { kind: 'ready' };
+        }
+        return prev;
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [state.kind]);
 
   function handleCameraError(error: unknown): void {
     const message =

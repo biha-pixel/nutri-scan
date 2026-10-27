@@ -227,11 +227,11 @@ function computeCalibrationFromMarker(
   customDimensionsMm?: { widthMm: number; heightMm: number }
 ): CalibrationSummary {
   // Step 1: Validate confidence
-  if (detectedMarker.confidence < CALIBRATION_CONFIG.MIN_CONFIDENCE) {
+  if (!detectedMarker.confidence || detectedMarker.confidence < CALIBRATION_CONFIG.MIN_CONFIDENCE) {
     return {
       success: false,
       validationStatus: 'low_confidence',
-      message: `Marker confidence ${detectedMarker.confidence.toFixed(2)} below threshold ${CALIBRATION_CONFIG.MIN_CONFIDENCE}`,
+      message: `Marker confidence ${(detectedMarker.confidence ?? 0).toFixed(2)} below threshold ${CALIBRATION_CONFIG.MIN_CONFIDENCE}`,
       minConfidenceThreshold: CALIBRATION_CONFIG.MIN_CONFIDENCE,
       minMarkerSizePx: CALIBRATION_CONFIG.MIN_MARKER_SIZE_PX,
       aspectRatioTolerancePercent: CALIBRATION_CONFIG.ASPECT_RATIO_TOLERANCE_PERCENT,
@@ -332,7 +332,7 @@ function computeCalibrationFromMarker(
     pixelsPerMmY,
     aspectRatio,
     markerType: detectedMarker.markerType as ReferenceMarkerType,
-    confidence: detectedMarker.confidence,
+    confidence: detectedMarker.confidence ?? undefined,
     validationStatus: 'success',
     message: `Calibration successful: ${pixelsPerMmX.toFixed(3)} px/mm (X), ${pixelsPerMmY.toFixed(3)} px/mm (Y)`,
     minConfidenceThreshold: CALIBRATION_CONFIG.MIN_CONFIDENCE,

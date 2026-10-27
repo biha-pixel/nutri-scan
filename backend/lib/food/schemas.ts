@@ -45,12 +45,13 @@ export const FoodItemSchema = z.object({
 /**
  * Detected reference marker in the image (if calibration was used).
  * Only present when a marker was successfully detected and validated.
+ * Can be null or omitted when no marker is detected.
  */
 const DetectedMarkerSchema = z.object({
-  markerType: z.string(), // e.g., "credit_card", "us_quarter"
-  confidence: z.number().min(0).max(1),
+  markerType: z.string().nullable().optional(), // e.g., "credit_card", "us_quarter"
+  confidence: z.number().min(0).max(1).nullable().optional(),
   box2d: Box2DSchema.nullable().optional(),
-});
+}).nullable().optional();
 
 /**
  * Zod Schema for FoodRecognitionResult
@@ -61,7 +62,7 @@ export const FoodRecognitionResultSchema = z.object({
   items: z.array(FoodItemSchema),
   imageQuality: z.enum(["good", "poor", "unrecognizable"]),
   message: z.string().optional(),
-  detectedMarker: DetectedMarkerSchema.optional(),
+  detectedMarker: DetectedMarkerSchema,
 });
 
 /**
@@ -94,5 +95,5 @@ export const GeminiResponseSchema = z.object({
   ),
   imageQuality: z.enum(["good", "poor", "unrecognizable"]),
   message: z.string().optional(),
-  detectedMarker: DetectedMarkerSchema.optional(),
+  detectedMarker: DetectedMarkerSchema,
 });
